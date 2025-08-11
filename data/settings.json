@@ -1,0 +1,14 @@
+{
+  "title": "Menu",
+  "admin_username": "S_Ottoo",
+  "bot_username": "LeStandardisteBot",
+  "order_button_label": "Commander",
+  "require_name": true,
+  "require_phone": true,
+  "require_address": true,
+
+  "theme_bg": "images/dr-stone-bg.jpg",
+  "theme_overlay_opacity": 0.4,
+  "accent_color": "#00e676",
+  "header_logo": ""
+}

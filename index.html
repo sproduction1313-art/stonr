@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Menu</title>
+  <meta name="theme-color" content="#0f0f10" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <img id="logo" class="logo" alt="" style="display:none" />
+      <h1 id="title" class="title">Menu</h1>
+    </div>
+    <p id="section" class="subtitle" aria-live="polite"></p>
+  </header>
+
+  <main id="content" class="content" role="main">
+    <section aria-labelledby="catalogue-heading">
+      <h2 id="catalogue-heading" class="visually-hidden">Catalogue</h2>
+      <div id="list" class="grid" aria-live="polite"></div>
+    </section>
+
+    <section class="card" aria-labelledby="delivery-heading">
+      <h2 id="delivery-heading">Infos de livraison</h2>
+      <label>Nom/Prénom
+        <input id="name" placeholder="Ton nom" autocomplete="name" />
+      </label>
+      <label>Téléphone
+        <input id="phone" placeholder="+33..." inputmode="tel" autocomplete="tel" />
+      </label>
+      <label>Adresse complète
+        <textarea id="address" rows="3" placeholder="N°, rue, code postal, ville"></textarea>
+      </label>
+      <label>Note (optionnel)
+        <textarea id="note" rows="2" placeholder="Digicode, étage..."></textarea>
+      </label>
+    </section>
+  </main>
+
+  <footer class="footer" role="contentinfo">
+    <div id="total" class="total">Total: 0€</div>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

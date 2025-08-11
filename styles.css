@@ -1,0 +1,93 @@
+* { box-sizing: border-box; }
+:root {
+  --bg: var(--tg-theme-bg-color, #0f0f10);
+  --fg: var(--tg-theme-text-color, #fff);
+  --muted: rgba(255,255,255,.08);
+  --panel: rgba(15,15,16,.55);
+  --border: rgba(255,255,255,.12);
+  --btn: var(--tg-theme-button-color, #00e676); /* accent Dr. Stone */
+  --btnText: var(--tg-theme-button-text-color, #000);
+
+  /* Thème Dr. Stone */
+  --bg-image: url('images/dr-stone-bg.jpg'); /* déjà branché */
+  --overlay-opacity: 0.40;
+}
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.4;
+  position: relative;
+  min-height: 100dvh;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image:
+    linear-gradient(rgba(0,0,0,var(--overlay-opacity)), rgba(0,0,0,var(--overlay-opacity))),
+    var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  filter: saturate(1.05) contrast(1.05);
+}
+
+.visually-hidden { position: absolute; left: -9999px; }
+
+.header { padding: 16px; border-bottom: 1px solid var(--muted); }
+.brand { display:flex; align-items:center; gap:10px; }
+.logo {
+  width: 28px; height: 28px; object-fit: contain;
+  border-radius: 6px; border: 1px solid var(--border);
+  background: #0006;
+}
+.title { margin: 0; font-size: 20px; font-weight: 700; }
+.subtitle { margin: 4px 0 0; opacity: .85; font-size: 14px; }
+
+.content { padding-bottom: 80px; }
+.grid { padding: 12px; display: grid; gap: 12px; }
+
+.card {
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  backdrop-filter: blur(2px);
+}
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.badge { font-size: 12px; opacity: .85; }
+.price { font-weight: 700; white-space: nowrap; }
+
+.thumb {
+  width: 64px; height: 64px; object-fit: cover; flex: 0 0 64px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: #0003;
+}
+
+.btn {
+  padding: 8px 12px; border-radius: 10px; cursor: pointer; border: 0;
+  background: var(--btn); color: var(--btnText); font-weight: 600;
+}
+.qtybtn { min-width: 36px; }
+
+input, textarea {
+  width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
+  background: transparent; color: inherit; outline: none;
+}
+label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+
+.footer {
+  position: sticky; bottom: 0; padding: 10px 12px; background: rgba(0,0,0,.45);
+  border-top: 1px solid var(--muted);
+}
+.total { font-weight: 700; }

@@ -1,0 +1,5 @@
+[
+  { "id": "p1", "title": "Produit A", "price": 10.0, "badge": "Nouveau", "image": "", "active": true },
+  { "id": "p2", "title": "Produit B", "price": 15.0, "badge": "Best",   "image": "", "active": true },
+  { "id": "p3", "title": "Produit C", "price": 20.0, "badge": "",       "image": "", "active": false }
+]
