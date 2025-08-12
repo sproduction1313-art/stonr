@@ -2,14 +2,28 @@ backend:
   name: git-gateway
   branch: main
 
-media_folder: "uploads"
-public_folder: "/uploads"
+media_folder: "assets/uploads"
+public_folder: "/assets/uploads"
+
+# publie direct (pas de brouillon)
+publish_mode: simple
 
 collections:
-  - name: "test"
-    label: "Test Collection"
-    folder: "content/test"
+  - name: "produits"
+    label: "Produits"
+    label_singular: "Produit"
+    folder: "content/produits"
     create: true
     slug: "{{slug}}"
+    extension: "md"
+    format: "frontmatter"
+    summary: "{{title}} – {{price}}€"
     fields:
       - { label: "Titre", name: "title", widget: "string" }
+      - { label: "Prix (€)", name: "price", widget: "number", value_type: "float", min: 0, step: 0.01 }
+      - { label: "Description", name: "description", widget: "text", required: false }
+      - { label: "Image (16:9)", name: "image", widget: "image", required: true }
+      - { label: "Vidéo (URL .mp4)", name: "video", widget: "string", required: false }
+      - { label: "Badge (ex: Nouveau, Best)", name: "badge", widget: "string", required: false }
+      - { label: "Ordre (tri ascendant)", name: "order", widget: "number", value_type: "int", min: 0, default: 0 }
+      - { label: "Publié ?", name: "published", widget: "boolean", default: true }
