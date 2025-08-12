@@ -1,154 +1,242 @@
-// Telegram Mini App bootstrap
-const tg = window.Telegram?.WebApp || { MainButton: { show(){}, hide(){}, setText(){} }, expand(){} };
-tg.expand();
+const GRID = document.getElementById('grid');
+const FAB = document.getElementById('checkoutBtn');
 
-// Section (startapp) ex: .../app?startapp=menu
-const startParam = new URLSearchParams(location.search).get('tgWebAppStartParam') || 'menu';
-document.getElementById('section').textContent = `Section: ${startParam}`;
+// ⚙️ GitHub (produits .md)
+const GH_OWNER = 'sproduction1313-art';
+const GH_REPO  = 'stonr';
+const GH_PATH  = 'content/produits';
+const GH_BRANCH= 'main';
 
-// Préremplissage nom depuis Telegram si dispo
-const u = tg.initDataUnsafe?.user;
-if (u) {
-  const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.username || '';
-  if (name) document.getElementById('name').value = name;
+// 🛒 Panier en mémoire
+const CART = new Map(); // key: title, value: {title, price, qty}
+let TOTAL = 0;
+
+// ====== FRONTMATTER ======
+function parseFrontmatter(md){
+  const m = /^---\s*([\s\S]*?)\s*---/m.exec(md);
+  const fm = {}; let body = md;
+  if (m) {
+    body = md.slice(m[0].length);
+    m[1].split('\n').forEach(line=>{
+      if(!line.trim()) return;
+      const i = line.indexOf(':'); if(i<0) return;
+      const k = line.slice(0,i).trim();
+      let v = line.slice(i+1).trim();
+      if (v==='true') v = true;
+      else if (v==='false') v = false;
+      else if (!isNaN(v) && v!=='') v = Number(v);
+      fm[k]=v;
+    });
+  }
+  return { fm, body };
 }
 
-// State
-let SETTINGS = null;
-let PRODUCTS = [];
-let cart = [];
+// ====== LIGHTBOX (galerie) ======
+const lb = {
+  el: document.getElementById('lightbox'),
+  stage: document.getElementById('lbStage'),
+  ind: document.getElementById('lbInd'),
+  idx: 0, media: [],
+  open(media, i=0){ this.media=media; this.idx=i; this.render(); this.el.classList.add('open'); this.el.setAttribute('aria-hidden','false'); },
+  close(){ this.el.classList.remove('open'); this.el.setAttribute('aria-hidden','true'); this.stage.innerHTML=''; this.ind.innerHTML=''; },
+  prev(){ this.idx=(this.idx-1+this.media.length)%this.media.length; this.render(); },
+  next(){ this.idx=(this.idx+1)%this.media.length; this.render(); },
+  render(){
+    const m=this.media[this.idx]; this.stage.innerHTML='';
+    const node = m.type==='video' ? Object.assign(document.createElement('video'),{controls:true,autoplay:true,src:m.src}) : Object.assign(document.createElement('img'),{src:m.src});
+    this.stage.appendChild(node);
+    this.ind.innerHTML=this.media.map((_,j)=>`<span class="${j===this.idx?'on':''}"></span>`).join('');
+  }
+};
+document.getElementById('lbClose').onclick=()=>lb.close();
+document.getElementById('lbPrev').onclick=()=>lb.prev();
+document.getElementById('lbNext').onclick=()=>lb.next();
+lb.el.addEventListener('click', e=>{ if(e.target===lb.el) lb.close(); });
 
-// Utils
-const € = (n) => `${(+n).toFixed(2)}€`;
-const $ = (id) => document.getElementById(id);
+// ====== PRODUITS ======
+async function loadProducts(){
+  const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}`;
+  const res = await fetch(url);
+  const files = await res.json();
+  if (!Array.isArray(files)) return;
 
-function refreshMainButton(){
-  const sum = cart.reduce((s, x) => s + x.price * x.qty, 0);
-  tg.MainButton.setText(`${SETTINGS?.order_button_label || "Commander"} • ${€(sum)}`);
-  if (sum > 0) tg.MainButton.show(); else tg.MainButton.hide();
-  $('total').textContent = `Total: ${€(sum)}`;
+  const items = [];
+  for (const f of files) {
+    if (!/\.md$/i.test(f.name)) continue;
+    const txt = await (await fetch(f.download_url)).text();
+    const { fm } = parseFrontmatter(txt);
+    if (fm.published === false) continue;
+
+    const images = [];
+    const videos = [];
+    if (fm.image) images.push(String(fm.image));
+    if (fm.images) String(fm.images).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>images.push(u));
+    if (fm.video) videos.push(String(fm.video));
+    if (fm.videos) String(fm.videos).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>videos.push(u));
+
+    const media = [
+      ...images.map(src=>({type:'image', src})),
+      ...videos.map(src=>({type:'video', src}))
+    ];
+
+    items.push({
+      title: fm.title || 'Sans titre',
+      price: (typeof fm.price==='number') ? fm.price : Number(fm.price||0),
+      badge: fm.badge || '',
+      category: fm.category || '',
+      farm: fm.farm || '',
+      order: fm.order || 0,
+      media
+    });
+  }
+
+  setupFilters(items);
+  render(items);
 }
 
-function renderProducts(){
-  const list = $('list');
-  list.innerHTML = '';
-  (PRODUCTS || []).filter(p => p && p.active !== false).forEach(p => {
-    const card = document.createElement('article');
-    card.className = 'card';
-    card.setAttribute('aria-label', p.title);
+function setupFilters(items){
+  const cats = Array.from(new Set(items.map(i=>i.category).filter(Boolean))).sort();
+  const farms = Array.from(new Set(items.map(i=>i.farm).filter(Boolean))).sort();
 
-    card.innerHTML = `
-      <div class="row">
-        <div style="display:flex;gap:10px;align-items:center;min-width:0">
-          <img class="thumb" src="${p.image || ''}" alt="${p.title}" onerror="this.style.display='none'"/>
-          <div style="min-width:0">
-            <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.title}</div>
-            <div class="badge">${p.badge || ''}</div>
-          </div>
-        </div>
-        <div class="price">${€(p.price)}</div>
-      </div>
-      <div class="row" aria-label="Quantité">
-        <div>Quantité:</div>
-        <div>
-          <button class="btn qtybtn" data-q="-1" aria-label="Moins">-</button>
-          <span class="qty" style="margin:0 8px">0</span>
-          <button class="btn qtybtn" data-q="1" aria-label="Plus">+</button>
-        </div>
-      </div>
-    `;
+  const catBtn = document.getElementById('chipCategory');
+  const farmBtn = document.getElementById('chipFarm');
+  let curCat = null, curFarm = null;
 
-    const qtyEl = card.querySelector('.qty');
-    const minus = card.querySelector('button[data-q="-1"]');
-    const plus  = card.querySelector('button[data-q="1"]');
+  catBtn.onclick = ()=>{
+    const c = prompt(`Catégorie:\n${['(Toutes)', ...cats].join('\n')}`) || '';
+    curCat = (c && c!=='(Toutes)') ? c : null;
+    document.getElementById('labelCategory').textContent = curCat || 'Toutes les catégories';
+    apply();
+  };
+  farmBtn.onclick = ()=>{
+    const c = prompt(`Farm:\n${['(Toutes)', ...farms].join('\n')}`) || '';
+    curFarm = (c && c!=='(Toutes)') ? c : null;
+    document.getElementById('labelFarm').textContent = curFarm || 'Toutes les farms';
+    apply();
+  };
 
-    const findItem = () => cart.find(x => x.id === p.id);
-    const setQty = (q) => {
-      q = Math.max(0, q);
-      qtyEl.textContent = q;
-      const existing = findItem();
-      if (q === 0 && existing) cart = cart.filter(x => x.id !== p.id);
-      if (q > 0) {
-        if (existing) { existing.qty = q; existing.price = +p.price || 0; existing.title = p.title; }
-        else cart.push({ id: p.id, title: p.title, price: +p.price || 0, qty: q });
-      }
-      refreshMainButton();
-      tg.HapticFeedback?.impactOccurred?.('light');
-    };
-
-    minus.addEventListener('click', () => setQty((findItem()?.qty || 0) - 1));
-    plus .addEventListener('click', () => setQty((findItem()?.qty || 0) + 1));
-
-    list.appendChild(card);
-  });
-}
-
-function applyTheme() {
-  // si settings.json fournit un autre fond/overlay/couleur, on les pousse
-  if (SETTINGS?.theme_bg) document.documentElement.style.setProperty('--bg-image', `url('${SETTINGS.theme_bg}')`);
-  if (Number.isFinite(+SETTINGS?.theme_overlay_opacity)) document.documentElement.style.setProperty('--overlay-opacity', String(+SETTINGS.theme_overlay_opacity));
-  if (SETTINGS?.accent_color) document.documentElement.style.setProperty('--btn', SETTINGS.accent_color);
-  const logoEl = document.getElementById('logo');
-  if (logoEl && SETTINGS?.header_logo) { logoEl.src = SETTINGS.header_logo; logoEl.style.display = 'block'; }
-}
-
-tg.MainButton.onClick(() => {
-  const name = $('name').value.trim();
-  const phone = $('phone').value.trim();
-  const address = $('address').value.trim();
-  const note = $('note').value.trim();
-
-  if (SETTINGS?.require_name !== false && !name) return tg.showPopup({title:'Info manquante',message:'Nom requis.'});
-  if (SETTINGS?.require_phone !== false && !phone) return tg.showPopup({title:'Info manquante',message:'Téléphone requis.'});
-  if (SETTINGS?.require_address !== false && !address) return tg.showPopup({title:'Info manquante',message:'Adresse requise.'});
-
-  const sum = cart.reduce((s, x) => s + x.price * x.qty, 0);
-  if (sum <= 0) return tg.showPopup({title:'Panier vide',message:'Ajoute au moins un article.'});
-
-  const lines = cart.map(x => `• ${x.title} x${x.qty} — ${€(x.price * x.qty)}`).join('\n');
-  const text = encodeURIComponent(
-`Nouvelle commande (${startParam})
-Client: ${name}
-Tel: ${phone}
-Adresse: ${address}
-Note: ${note || '-'}
-
-Panier:
-${lines}
-Total: ${€(sum)}`
-  );
-
-  const admin = (SETTINGS?.admin_username || '').replace(/^@/,'');
-  const bot   = (SETTINGS?.bot_username   || '').replace(/^@/,'');
-  const target = admin || bot;
-
-  if (!target) return tg.showPopup({title:'Config manquante', message:'Aucun destinataire (admin_username/bot_username).'});
-  const url = `https://t.me/${target}?text=${text}`;
-  tg.openTelegramLink(url);
-  tg.close();
-});
-
-async function boot(){
-  try{
-    const [sRes, pRes] = await Promise.all([
-      fetch('data/settings.json', {cache:'no-store'}),
-      fetch('data/products.json', {cache:'no-store'})
-    ]);
-    const s = await sRes.json();
-    const p = await pRes.json();
-
-    SETTINGS = s || {};
-    PRODUCTS = Array.isArray(p) ? p : (p?.items || []);
-
-    if (SETTINGS?.title) $('title').textContent = SETTINGS.title;
-
-    applyTheme();
-    renderProducts();
-    refreshMainButton();
-  } catch (err) {
-    console.error(err);
-    tg.showPopup({title:'Erreur', message:'Chargement impossible.'});
+  function apply(){
+    const filtered = items.filter(i =>
+      (!curCat || i.category===curCat) &&
+      (!curFarm || i.farm===curFarm)
+    ).sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title).localeCompare(b.title));
+    render(filtered);
   }
 }
 
-boot();
+function render(items){
+  GRID.innerHTML = '';
+  items.forEach(item=>{
+    const cover = item.media[0];
+
+    const card = document.createElement('article');
+    card.className = 'card';
+
+    const mediaBox = document.createElement('div');
+    mediaBox.className = 'media';
+    if (cover) {
+      if (cover.type==='video') {
+        const v = document.createElement('video');
+        v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true; v.src = cover.src;
+        mediaBox.appendChild(v);
+        const play = document.createElement('div'); play.className='play'; play.textContent='▶︎'; mediaBox.appendChild(play);
+      } else {
+        const img = document.createElement('img'); img.src = cover.src; img.alt = item.title; mediaBox.appendChild(img);
+      }
+    }
+    if (item.badge) { const b=document.createElement('div'); b.className='badge'; b.textContent=item.badge.toUpperCase(); mediaBox.appendChild(b); }
+    mediaBox.addEventListener('click', ()=> lb.open(item.media, 0));
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML = `
+      <h3 class="title">${item.title}</h3>
+      ${item.category || item.farm ? `<p class="sub">${[item.category,item.farm].filter(Boolean).join(' · ')}</p>`:''}
+      ${item.price ? `<div class="price">${item.price.toFixed(2)}€</div>`:''}
+      <button class="btnAdd">Ajouter</button>
+    `;
+
+    // Ajouter au panier
+    meta.querySelector('.btnAdd').onclick = ()=>{
+      const cur = CART.get(item.title) || {title:item.title, price:item.price, qty:0};
+      cur.qty += 1; CART.set(item.title, cur);
+      recalcTotal();
+    };
+
+    card.appendChild(mediaBox);
+    card.appendChild(meta);
+    GRID.appendChild(card);
+  });
+}
+
+function recalcTotal(){
+  TOTAL = 0;
+  CART.forEach(it=>{ TOTAL += it.price * it.qty; });
+  FAB.textContent = `Envoyer la commande — ${TOTAL.toFixed(2)}€`;
+  FAB.disabled = TOTAL <= 0;
+}
+
+// ====== CHECKOUT ======
+const sheet = document.getElementById('sheet');
+const sheetClose = document.getElementById('sheetClose');
+const sheetTotal = document.getElementById('sheetTotal');
+const sheetError = document.getElementById('sheetError');
+
+FAB.onclick = ()=>{
+  sheetTotal.textContent = `Total : ${TOTAL.toFixed(2)}€`;
+  sheet.classList.add('open');
+  sheet.setAttribute('aria-hidden','false');
+};
+sheetClose.onclick = ()=>{ sheet.classList.remove('open'); sheet.setAttribute('aria-hidden','true'); };
+sheet.addEventListener('click', e=>{ if(e.target===sheet) sheetClose.click(); });
+
+document.getElementById('sendOrder').onclick = ()=>{
+  const name = document.getElementById('name').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const address = document.getElementById('address').value.trim();
+  const note = document.getElementById('note').value.trim();
+
+  // Validation
+  if (!name || !phone || !address){
+    sheetError.textContent = "Merci de renseigner : Nom, Téléphone et Adresse.";
+    return;
+  }
+  if (CART.size === 0){
+    sheetError.textContent = "Votre panier est vide.";
+    return;
+  }
+  sheetError.textContent = "";
+
+  // Prépare le payload
+  const items = Array.from(CART.values()).map(i=>({title:i.title, price:i.price, qty:i.qty}));
+  const payload = {
+    type: 'order',
+    total: Number(TOTAL.toFixed(2)),
+    customer: { name, phone, address, note },
+    items
+  };
+
+  // Envoi à Telegram (mini-app)
+  if (window.Telegram && Telegram.WebApp) {
+    try{
+      Telegram.WebApp.expand();
+      Telegram.WebApp.sendData(JSON.stringify(payload)); // reçu côté bot dans web_app_data
+      Telegram.WebApp.close(); // ferme la mini-app
+    }catch(e){
+      console.error(e);
+      fallbackOpenBot(payload);
+    }
+  } else {
+    // Fallback navigateur normal
+    fallbackOpenBot(payload);
+  }
+};
+
+function fallbackOpenBot(payload){
+  // Ouvre le bot avec un param (tu traiteras côté bot si tu veux)
+  const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
+  window.location.href = `https://t.me/LeStandardisteBot?startapp=${encoded}`;
+}
+
+// ====== START ======
+loadProducts();

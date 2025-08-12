@@ -1,93 +1,92 @@
-* { box-sizing: border-box; }
-:root {
-  --bg: var(--tg-theme-bg-color, #0f0f10);
-  --fg: var(--tg-theme-text-color, #fff);
-  --muted: rgba(255,255,255,.08);
-  --panel: rgba(15,15,16,.55);
-  --border: rgba(255,255,255,.12);
-  --btn: var(--tg-theme-button-color, #00e676); /* accent Dr. Stone */
-  --btnText: var(--tg-theme-button-text-color, #000);
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Menu</title>
+  <meta name="theme-color" content="#0b0d10" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
 
-  /* Thème Dr. Stone */
-  --bg-image: url('images/dr-stone-bg.jpg'); /* déjà branché */
-  --overlay-opacity: 0.40;
-}
+  <!-- Top app bar -->
+  <header class="appbar">
+    <button class="link" onclick="history.back()">Fermer</button>
+    <div class="appbar-title">
+      <span class="app-name">LeStandardisteBot</span>
+      <small class="app-sub">mini‑application</small>
+    </div>
+    <div class="dots">•••</div>
+  </header>
 
-html, body { height: 100%; }
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--fg);
-  line-height: 1.4;
-  position: relative;
-  min-height: 100dvh;
-}
+  <!-- Logo -->
+  <section class="hero">
+    <img class="hero-logo" src="/assets/logo.png" alt="logo" />
+  </section>
 
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  background-image:
-    linear-gradient(rgba(0,0,0,var(--overlay-opacity)), rgba(0,0,0,var(--overlay-opacity))),
-    var(--bg-image);
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed;
-  filter: saturate(1.05) contrast(1.05);
-}
+  <!-- Filtres -->
+  <section class="filters">
+    <button class="chip" id="chipCategory">
+      <span id="labelCategory">Toutes les catégories</span><span class="chev">▾</span>
+    </button>
+    <button class="chip" id="chipFarm">
+      <span id="labelFarm">Toutes les farms</span><span class="chev">▾</span>
+    </button>
+  </section>
 
-.visually-hidden { position: absolute; left: -9999px; }
+  <!-- Grille produits -->
+  <main class="grid" id="grid" aria-live="polite"></main>
 
-.header { padding: 16px; border-bottom: 1px solid var(--muted); }
-.brand { display:flex; align-items:center; gap:10px; }
-.logo {
-  width: 28px; height: 28px; object-fit: contain;
-  border-radius: 6px; border: 1px solid var(--border);
-  background: #0006;
-}
-.title { margin: 0; font-size: 20px; font-weight: 700; }
-.subtitle { margin: 4px 0 0; opacity: .85; font-size: 14px; }
+  <!-- Bouton panier / checkout -->
+  <button id="checkoutBtn" class="fab" disabled>Envoyer la commande — 0,00€</button>
 
-.content { padding-bottom: 80px; }
-.grid { padding: 12px; display: grid; gap: 12px; }
+  <!-- Bottom nav -->
+  <nav class="tabbar">
+    <a class="tab active" href="#"><span class="ico">🏠</span><span>Menu</span></a>
+    <a class="tab" href="#infos"><span class="ico">ℹ️</span><span>Infos</span></a>
+    <a class="tab" href="#canal"><span class="ico">📣</span><span>Canal</span></a>
+    <a class="tab" href="#contact"><span class="ico">✉️</span><span>Contact</span></a>
+  </nav>
 
-.card {
-  padding: 12px;
-  border-radius: 14px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  backdrop-filter: blur(2px);
-}
+  <!-- Modal galerie -->
+  <div id="lightbox" class="lightbox" aria-hidden="true">
+    <button class="lb-close" id="lbClose" aria-label="Fermer">✕</button>
+    <button class="lb-prev" id="lbPrev" aria-label="Précédent">‹</button>
+    <button class="lb-next" id="lbNext" aria-label="Suivant">›</button>
+    <div class="lb-stage" id="lbStage"></div>
+    <div class="lb-ind" id="lbInd"></div>
+  </div>
 
-.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.badge { font-size: 12px; opacity: .85; }
-.price { font-weight: 700; white-space: nowrap; }
+  <!-- Fiche checkout -->
+  <div id="sheet" class="sheet" aria-hidden="true">
+    <div class="sheet-card">
+      <header class="sheet-head">
+        <h3>Finaliser la commande</h3>
+        <button id="sheetClose" class="x">✕</button>
+      </header>
+      <div class="sheet-body">
+        <label>Nom / Prénom
+          <input id="name" placeholder="Ton nom" autocomplete="name" />
+        </label>
+        <label>Téléphone
+          <input id="phone" placeholder="+33..." inputmode="tel" autocomplete="tel" />
+        </label>
+        <label>Adresse complète
+          <textarea id="address" rows="3" placeholder="N°, rue, code postal, ville"></textarea>
+        </label>
+        <label>Note (optionnel)
+          <textarea id="note" rows="2" placeholder="Digicode, étage..."></textarea>
+        </label>
+        <div id="sheetError" class="error" role="alert" aria-live="polite"></div>
+      </div>
+      <footer class="sheet-foot">
+        <div id="sheetTotal" class="sheet-total">Total : 0,00€</div>
+        <button id="sendOrder" class="btn-primary">Envoyer la commande</button>
+      </footer>
+    </div>
+  </div>
 
-.thumb {
-  width: 64px; height: 64px; object-fit: cover; flex: 0 0 64px;
-  border-radius: 10px; border: 1px solid var(--border);
-  background: #0003;
-}
-
-.btn {
-  padding: 8px 12px; border-radius: 10px; cursor: pointer; border: 0;
-  background: var(--btn); color: var(--btnText); font-weight: 600;
-}
-.qtybtn { min-width: 36px; }
-
-input, textarea {
-  width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
-  background: transparent; color: inherit; outline: none;
-}
-label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
-
-.footer {
-  position: sticky; bottom: 0; padding: 10px 12px; background: rgba(0,0,0,.45);
-  border-top: 1px solid var(--muted);
-}
-.total { font-weight: 700; }
+  <script type="module" src="app.js"></script>
+</body>
+</html>
