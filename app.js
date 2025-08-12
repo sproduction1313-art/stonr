@@ -8,13 +8,13 @@ const GH_PATH   = 'content/produits'; // dossier à la racine du repo
 // ATTENTION: visible côté client. Utiliser seulement si nécessaire.
 const GH_TOKEN  = ''; // ex: 'ghp_xxx' sinon laisse ''
 
-// Variantes d'URL pour la liste des produits (API GitHub → on testera dans cet ordre)
+// Variantes d'URL pour lister via l’API GitHub (test dans cet ordre)
 const GH_URLS = [
   `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}`,
   `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=refs/heads/${encodeURIComponent(GH_BRANCH)}`
 ];
 
-// Fallback si l'app n'est pas ouverte dans Telegram
+// Fallback si l'app n'est pas ouverte dans Telegram (gardé au cas où, mais on passe par la Function)
 const TELEGRAM_BOT_USERNAME = 'LeStandardisteBot';
 
 // ================== DOM ==================
@@ -98,18 +98,20 @@ const Lightbox = {
     this.media = Array.isArray(list)?list:[];
     this.idx = Math.max(0, Math.min(i, this.media.length-1));
     this.render();
-    LB_EL.classList.add('open');
-    LB_EL.setAttribute('aria-hidden','false');
+    LB_EL?.classList.add('open');
+    LB_EL?.setAttribute('aria-hidden','false');
   },
   close(){
-    LB_EL.classList.remove('open');
-    LB_EL.setAttribute('aria-hidden','true');
-    LB_STAGE.innerHTML=''; LB_IND.innerHTML='';
+    LB_EL?.classList.remove('open');
+    LB_EL?.setAttribute('aria-hidden','true');
+    if (LB_STAGE) LB_STAGE.innerHTML=''; 
+    if (LB_IND) LB_IND.innerHTML='';
     this.media=[]; this.idx=0;
   },
   prev(){ if(!this.media.length) return; this.idx=(this.idx-1+this.media.length)%this.media.length; this.render(); },
   next(){ if(!this.media.length) return; this.idx=(this.idx+1)%this.media.length; this.render(); },
   render(){
+    if (!LB_STAGE) return;
     LB_STAGE.innerHTML = '';
     if (!this.media.length) return;
     const m = this.media[this.idx];
@@ -122,7 +124,7 @@ const Lightbox = {
       node.src = m.src; node.alt = '';
     }
     LB_STAGE.appendChild(node);
-    LB_IND.innerHTML = this.media.map((_,j)=>`<span class="${j===this.idx?'on':''}"></span>`).join('');
+    if (LB_IND) LB_IND.innerHTML = this.media.map((_,j)=>`<span class="${j===this.idx?'on':''}"></span>`).join('');
   }
 };
 LB_CLOSE && (LB_CLOSE.onclick = ()=>Lightbox.close());
@@ -201,7 +203,7 @@ async function loadProducts(){
   let fileURLs = await listViaProductsJSON();
   if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaContentsAPI(headers);
   if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaTreesAPI(headers);
-  if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaProductsJSON(); // re‑essai (au cas où)
+  if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaProductsJSON(); // re‑essai
 
   if (!fileURLs || fileURLs.length === 0) {
     grid.innerHTML = `
@@ -344,7 +346,8 @@ function recalcTotal(){
 }
 
 FAB && FAB.addEventListener('click', ()=>{
-  SHEET_TOTAL.textContent = `Total : ${TOTAL.toFixed(2)}€`;
+  if (!SHEET) return;
+  SHEET_TOTAL && (SHEET_TOTAL.textContent = `Total : ${TOTAL.toFixed(2)}€`);
   SHEET.classList.add('open');
   SHEET.setAttribute('aria-hidden','false');
 });
@@ -359,7 +362,8 @@ SHEET && SHEET.addEventListener('click', e=>{
   }
 });
 
-document.getElementById('sendOrder')?.addEventListener('click', ()=>{
+// ================== ENVOI COMMANDE (via Netlify Function) ==================
+document.getElementById('sendOrder')?.addEventListener('click', async ()=>{
   const name = (NAME_INP?.value||'').trim();
   const phone= (PHONE_INP?.value||'').trim();
   const addr = (ADDR_INP?.value||'').trim();
@@ -376,31 +380,43 @@ document.getElementById('sendOrder')?.addEventListener('click', ()=>{
   SHEET_ERROR.textContent = '';
 
   const items = Array.from(CART.values()).map(i=>({ title:i.title, price:num(i.price,0), qty:i.qty }));
-  const payload = { type:'order', total:num(TOTAL,0), customer:{ name, phone, address:addr, note }, items };
+  const payload = {
+    type: 'order',
+    total: Number(TOTAL.toFixed(2)),
+    customer: { name, phone, address: addr, note },
+    items
+  };
 
-  if (window.Telegram && Telegram.WebApp){
-    try {
-      Telegram.WebApp.expand();
-      Telegram.WebApp.sendData(JSON.stringify(payload));
-      Telegram.WebApp.close();
-    } catch (e){
-      console.error('[ORDER] sendData error', e);
-      fallbackOpenBot(payload);
+  // si ouverte dans Telegram, on récupère l'id user pour répondre dans son chat
+  let chatId = '';
+  try {
+    if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe?.user?.id) {
+      chatId = Telegram.WebApp.initDataUnsafe.user.id;
     }
-  } else {
-    fallbackOpenBot(payload);
+  } catch(_) {}
+
+  try {
+    const r = await fetch('/.netlify/functions/sendOrder', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ payload, chatId })
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      console.error('sendOrder error', txt);
+      alert("Erreur d'envoi (serveur).");
+      return;
+    }
+    alert("Commande envoyée ✅");
+    CART.clear();
+    recalcTotal();
+    SHEET && SHEET.classList.remove('open');
+    SHEET && SHEET.setAttribute('aria-hidden','true');
+  } catch (e) {
+    console.error(e);
+    alert("Erreur réseau pendant l'envoi.");
   }
 });
-
-function fallbackOpenBot(payload){
-  try{
-    const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
-    window.location.href = `https://t.me/${TELEGRAM_BOT_USERNAME}?startapp=${encoded}`;
-  }catch(e){
-    console.error('[ORDER] fallback error', e);
-    alert('Commande prête. Ouvre le bot Telegram pour finaliser.');
-  }
-}
 
 // ================== BOOT ==================
 window.addEventListener('DOMContentLoaded', loadProducts);
