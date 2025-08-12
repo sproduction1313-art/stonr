@@ -3,49 +3,51 @@ const GH_OWNER  = 'sproduction1313-art';
 const GH_REPO   = 'stonr';
 const GH_BRANCH = 'main';
 const GH_PATH   = 'content/produits'; // dossier à la racine du repo
+const TELEGRAM_BOT_USERNAME = 'LeStandardisteBot'; // fallback hors mini‑app
 
-// Fallback: nom du bot si l'app n'est pas ouverte dans Telegram
-const TELEGRAM_BOT_USERNAME = 'LeStandardisteBot';
+// ================== DOM ==================
+const GRID   = document.getElementById('grid');
+const FAB    = document.getElementById('checkoutBtn');
 
-// ================== ELEMENTS ==================
-const GRID       = document.getElementById('grid');
-const FAB        = document.getElementById('checkoutBtn');
+const SHEET       = document.getElementById('sheet');
+const SHEET_CLOSE = document.getElementById('sheetClose');
+const SHEET_TOTAL = document.getElementById('sheetTotal');
+const SHEET_ERROR = document.getElementById('sheetError');
 
-const SHEET      = document.getElementById('sheet');
-const SHEET_CLOSE= document.getElementById('sheetClose');
-const SHEET_TOTAL= document.getElementById('sheetTotal');
-const SHEET_ERROR= document.getElementById('sheetError');
+const NAME_INP  = document.getElementById('name');
+const PHONE_INP = document.getElementById('phone');
+const ADDR_INP  = document.getElementById('address');
+const NOTE_INP  = document.getElementById('note');
 
-const NAME_INP   = document.getElementById('name');
-const PHONE_INP  = document.getElementById('phone');
-const ADDR_INP   = document.getElementById('address');
-const NOTE_INP   = document.getElementById('note');
+const CHIP_CAT = document.getElementById('chipCategory');
+const CHIP_FARM= document.getElementById('chipFarm');
+const LAB_CAT  = document.getElementById('labelCategory');
+const LAB_FARM = document.getElementById('labelFarm');
 
-const CHIP_CAT   = document.getElementById('chipCategory');
-const CHIP_FARM  = document.getElementById('chipFarm');
-const LAB_CAT    = document.getElementById('labelCategory');
-const LAB_FARM   = document.getElementById('labelFarm');
-
-// Lightbox elements
-const LB_EL   = document.getElementById('lightbox');
-const LB_STAGE= document.getElementById('lbStage');
-const LB_IND  = document.getElementById('lbInd');
-const LB_CLOSE= document.getElementById('lbClose');
-const LB_PREV = document.getElementById('lbPrev');
-const LB_NEXT = document.getElementById('lbNext');
+const LB_EL    = document.getElementById('lightbox');
+const LB_STAGE = document.getElementById('lbStage');
+const LB_IND   = document.getElementById('lbInd');
+const LB_CLOSE = document.getElementById('lbClose');
+const LB_PREV  = document.getElementById('lbPrev');
+const LB_NEXT  = document.getElementById('lbNext');
 
 // ================== STATE ==================
-let ALL_ITEMS = [];  // [{title, price, badge, category, farm, order, media:[{type,src}]}]
+let ALL_ITEMS = [];                 // liste complète
 let FILTER = { category:null, farm:null };
-
-const CART = new Map(); // key: title -> {title, price, qty}
+const CART = new Map();             // key=title -> {title, price, qty}
 let TOTAL = 0;
 
 // ================== UTILS ==================
-function numberOr(v, fallback=0){
-  if (typeof v === 'number' && !Number.isNaN(v)) return v;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+const antiCache = url => url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+function num(v, def=0){
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const s = v.replace(',', '.').trim();
+    const n = Number(s);
+    if (Number.isFinite(n)) return n;
+  }
+  return def;
 }
 
 function parseFrontmatter(md){
@@ -53,97 +55,82 @@ function parseFrontmatter(md){
   const fm = {};
   if (m) {
     m[1].split('\n').forEach(line=>{
-      const L=line.trim(); if(!L) return;
-      const i=L.indexOf(':'); if(i<0) return;
-      const k=L.slice(0,i).trim();
-      let v=L.slice(i+1).trim();
+      const L = line.trim();
+      if (!L) return;
+      const i = L.indexOf(':');
+      if (i < 0) return;
+      const k = L.slice(0,i).trim();
+      let v   = L.slice(i+1).trim();
       if (v === 'true') v = true;
       else if (v === 'false') v = false;
-      else if (!Number.isNaN(Number(v)) && v!=='') v = Number(v);
+      else if (/^-?\d+([,.]\d+)?$/.test(v)) v = num(v, 0);
       fm[k] = v;
     });
   }
   return fm;
 }
 
-function antiCache(url){
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}t=${Date.now()}`;
-}
-
 // ================== LIGHTBOX ==================
 const Lightbox = {
-  media: [],
-  idx: 0,
-  open(list, index=0){
-    this.media = Array.isArray(list) ? list : [];
-    this.idx = Math.min(Math.max(index,0), this.media.length-1);
-    this.render();
-    LB_EL.classList.add('open');
-    LB_EL.setAttribute('aria-hidden','false');
-  },
-  close(){
-    LB_EL.classList.remove('open');
-    LB_EL.setAttribute('aria-hidden','true');
-    LB_STAGE.innerHTML = '';
-    LB_IND.innerHTML = '';
-    this.media = [];
-    this.idx = 0;
-  },
-  prev(){ if(this.media.length){ this.idx = (this.idx - 1 + this.media.length) % this.media.length; this.render(); } },
-  next(){ if(this.media.length){ this.idx = (this.idx + 1) % this.media.length; this.render(); } },
+  media: [], idx: 0,
+  open(list, i=0){ this.media = Array.isArray(list)?list:[]; this.idx=Math.max(0,Math.min(i,this.media.length-1)); this.render(); LB_EL.classList.add('open'); LB_EL.setAttribute('aria-hidden','false'); },
+  close(){ LB_EL.classList.remove('open'); LB_EL.setAttribute('aria-hidden','true'); LB_STAGE.innerHTML=''; LB_IND.innerHTML=''; this.media=[]; this.idx=0; },
+  prev(){ if(!this.media.length) return; this.idx=(this.idx-1+this.media.length)%this.media.length; this.render(); },
+  next(){ if(!this.media.length) return; this.idx=(this.idx+1)%this.media.length; this.render(); },
   render(){
     LB_STAGE.innerHTML = '';
     if (!this.media.length) return;
     const m = this.media[this.idx];
-
     let node;
     if (m.type === 'video') {
       node = document.createElement('video');
-      node.controls = true;
-      node.autoplay = true;
-      node.src = m.src;
+      node.controls = true; node.autoplay = true; node.src = m.src;
     } else {
       node = document.createElement('img');
-      node.src = m.src;
-      node.alt = '';
+      node.src = m.src; node.alt = '';
     }
     LB_STAGE.appendChild(node);
-
-    LB_IND.innerHTML = this.media.map((_,i)=>`<span class="${i===this.idx?'on':''}"></span>`).join('');
+    LB_IND.innerHTML = this.media.map((_,j)=>`<span class="${j===this.idx?'on':''}"></span>`).join('');
   }
 };
-LB_CLOSE.onclick = ()=>Lightbox.close();
-LB_PREV.onclick  = ()=>Lightbox.prev();
-LB_NEXT.onclick  = ()=>Lightbox.next();
-LB_EL.addEventListener('click', e=>{ if (e.target === LB_EL) Lightbox.close(); });
+LB_CLOSE && (LB_CLOSE.onclick = ()=>Lightbox.close());
+LB_PREV  && (LB_PREV.onclick  = ()=>Lightbox.prev());
+LB_NEXT  && (LB_NEXT.onclick  = ()=>Lightbox.next());
+LB_EL && LB_EL.addEventListener('click', e=>{ if(e.target===LB_EL) Lightbox.close(); });
 
 // ================== LOAD PRODUCTS ==================
 async function loadProducts(){
   const listURL = antiCache(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}`);
-  const res = await fetch(listURL, { headers: { 'Cache-Control': 'no-cache' } });
-  if (!res.ok) {
-    console.error('[MENU] Erreur liste', res.status, await res.text());
+  console.log('[MENU] list:', listURL);
+  let res;
+  try {
+    res = await fetch(listURL, { headers:{'Cache-Control':'no-cache'} });
+  } catch (e){
+    console.error('[MENU] fetch error', e);
+    GRID.innerHTML = '<p>Impossible de charger le menu.</p>';
+    return;
+  }
+  if (!res.ok){
+    console.error('[MENU] list failed', res.status, await res.text());
     GRID.innerHTML = '<p>Impossible de charger le menu.</p>';
     return;
   }
   const files = await res.json();
-  if (!Array.isArray(files) || files.length === 0) {
+  if (!Array.isArray(files) || files.length===0){
     GRID.innerHTML = '<p>Aucun produit publié.</p>';
     return;
   }
 
   const items = [];
-  for (const f of files) {
+  for (const f of files){
     if (!/\.md$/i.test(f.name)) continue;
 
-    const md = await (await fetch(antiCache(f.download_url), { headers: { 'Cache-Control': 'no-cache' } })).text();
+    const md = await (await fetch(antiCache(f.download_url), { headers:{'Cache-Control':'no-cache'} })).text();
     const fm = parseFrontmatter(md);
 
-    // Afficher sauf si "published: false"
+    // masquer uniquement si published === false
     if (fm.published === false) continue;
 
-    // Médias
     const imgs = [];
     const vids = [];
     if (fm.image)  imgs.push(String(fm.image));
@@ -158,16 +145,15 @@ async function loadProducts(){
 
     items.push({
       title: fm.title || f.name.replace(/\.md$/,''),
-      price: numberOr(fm.price, 0),
+      price: num(fm.price, 0),
       badge: fm.badge || '',
       category: fm.category || '',
       farm: fm.farm || '',
-      order: numberOr(fm.order, 0),
+      order: num(fm.order, 0),
       media
     });
   }
 
-  // Tri par "order" puis "title"
   ALL_ITEMS = items.sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title).localeCompare(String(b.title)));
   setupFilters(ALL_ITEMS);
   applyFiltersAndRender();
@@ -178,22 +164,19 @@ function setupFilters(items){
   const cats  = Array.from(new Set(items.map(i=>i.category).filter(Boolean))).sort();
   const farms = Array.from(new Set(items.map(i=>i.farm).filter(Boolean))).sort();
 
-  if (CHIP_CAT) {
-    CHIP_CAT.onclick = ()=>{
-      const choice = prompt(`Catégorie:\n${['(Toutes)', ...cats].join('\n')}`) || '';
-      FILTER.category = (choice && choice !== '(Toutes)') ? choice : null;
-      if (LAB_CAT) LAB_CAT.textContent = FILTER.category || 'Toutes les catégories';
-      applyFiltersAndRender();
-    };
-  }
-  if (CHIP_FARM) {
-    CHIP_FARM.onclick = ()=>{
-      const choice = prompt(`Farm:\n${['(Toutes)', ...farms].join('\n')}`) || '';
-      FILTER.farm = (choice && choice !== '(Toutes)') ? choice : null;
-      if (LAB_FARM) LAB_FARM.textContent = FILTER.farm || 'Toutes les farms';
-      applyFiltersAndRender();
-    };
-  }
+  CHIP_CAT && (CHIP_CAT.onclick = ()=>{
+    const c = prompt(`Catégorie:\n${['(Toutes)', ...cats].join('\n')}`) || '';
+    FILTER.category = (c && c!=='(Toutes)') ? c : null;
+    LAB_CAT && (LAB_CAT.textContent = FILTER.category || 'Toutes les catégories');
+    applyFiltersAndRender();
+  });
+
+  CHIP_FARM && (CHIP_FARM.onclick = ()=>{
+    const c = prompt(`Farm:\n${['(Toutes)', ...farms].join('\n')}`) || '';
+    FILTER.farm = (c && c!=='(Toutes)') ? c : null;
+    LAB_FARM && (LAB_FARM.textContent = FILTER.farm || 'Toutes les farms');
+    applyFiltersAndRender();
+  });
 }
 
 function applyFiltersAndRender(){
@@ -207,52 +190,41 @@ function applyFiltersAndRender(){
 function render(items){
   GRID.innerHTML = '';
   items.forEach(item=>{
-    const cover = item.media[0]; // première image/vidéo
+    const cover = item.media[0];
 
     const card = document.createElement('article');
     card.className = 'card';
 
-    // Media 200x200
     const mediaBox = document.createElement('div');
     mediaBox.className = 'media';
-    if (cover) {
-      if (cover.type === 'video') {
+    if (cover){
+      if (cover.type === 'video'){
         const v = document.createElement('video');
         v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true;
         v.src = cover.src;
         mediaBox.appendChild(v);
-        const play = document.createElement('div'); play.className = 'play'; play.textContent = '▶︎'; mediaBox.appendChild(play);
+        const play = document.createElement('div'); play.className='play'; play.textContent='▶︎'; mediaBox.appendChild(play);
       } else {
-        const img = document.createElement('img');
-        img.src = cover.src; img.alt = item.title;
-        mediaBox.appendChild(img);
+        const img = document.createElement('img'); img.src = cover.src; img.alt = item.title; mediaBox.appendChild(img);
       }
     }
-    if (item.badge) {
-      const b = document.createElement('div');
-      b.className = 'badge';
-      b.textContent = String(item.badge).toUpperCase();
-      mediaBox.appendChild(b);
+    if (item.badge){
+      const b = document.createElement('div'); b.className='badge'; b.textContent=String(item.badge).toUpperCase(); mediaBox.appendChild(b);
     }
     mediaBox.addEventListener('click', ()=> Lightbox.open(item.media, 0));
 
-    // Meta
     const meta = document.createElement('div');
     meta.className = 'meta';
     meta.innerHTML = `
       <h3 class="title">${item.title}</h3>
-      ${item.category || item.farm ? `<p class="sub">${[item.category, item.farm].filter(Boolean).join(' · ')}</p>` : ''}
-      ${item.price ? `<div class="price">${numberOr(item.price).toFixed(2)}€</div>` : ''}
+      ${item.category || item.farm ? `<p class="sub">${[item.category,item.farm].filter(Boolean).join(' · ')}</p>` : ''}
+      ${item.price ? `<div class="price">${num(item.price).toFixed(2)}€</div>` : ''}
       <button class="btnAdd">Ajouter</button>
     `;
 
-    // Ajouter au panier
-    const btnAdd = meta.querySelector('.btnAdd');
-    btnAdd.addEventListener('click', ()=>{
-      const cur = CART.get(item.title) || { title:item.title, price:numberOr(item.price,0), qty:0 };
-      cur.qty += 1;
-      CART.set(item.title, cur);
-      recalcTotal();
+    meta.querySelector('.btnAdd').addEventListener('click', ()=>{
+      const cur = CART.get(item.title) || { title:item.title, price:num(item.price,0), qty:0 };
+      cur.qty += 1; CART.set(item.title, cur); recalcTotal();
     });
 
     card.appendChild(mediaBox);
@@ -261,82 +233,64 @@ function render(items){
   });
 }
 
-// ================== CART / CHECKOUT ==================
+// ================== CART & CHECKOUT ==================
 function recalcTotal(){
   TOTAL = 0;
-  CART.forEach(it => { TOTAL += it.price * it.qty; });
-  if (FAB) {
+  CART.forEach(it=> TOTAL += it.price * it.qty);
+  if (FAB){
     FAB.textContent = `Envoyer la commande — ${TOTAL.toFixed(2)}€`;
     FAB.disabled = TOTAL <= 0;
   }
 }
 
-if (FAB) {
-  FAB.addEventListener('click', ()=>{
-    SHEET_TOTAL.textContent = `Total : ${TOTAL.toFixed(2)}€`;
-    SHEET.classList.add('open');
-    SHEET.setAttribute('aria-hidden','false');
-  });
-}
-
-if (SHEET_CLOSE) {
-  SHEET_CLOSE.addEventListener('click', ()=>{
+FAB && FAB.addEventListener('click', ()=>{
+  SHEET_TOTAL.textContent = `Total : ${TOTAL.toFixed(2)}€`;
+  SHEET.classList.add('open');
+  SHEET.setAttribute('aria-hidden','false');
+});
+SHEET_CLOSE && SHEET_CLOSE.addEventListener('click', ()=>{
+  SHEET.classList.remove('open');
+  SHEET.setAttribute('aria-hidden','true');
+});
+SHEET && SHEET.addEventListener('click', e=>{
+  if (e.target === SHEET){
     SHEET.classList.remove('open');
     SHEET.setAttribute('aria-hidden','true');
-  });
-}
-if (SHEET) {
-  SHEET.addEventListener('click', e=>{
-    if (e.target === SHEET){
-      SHEET.classList.remove('open');
-      SHEET.setAttribute('aria-hidden','true');
-    }
-  });
-}
+  }
+});
 
-// Envoi commande
-const SEND_BTN = document.getElementById('sendOrder');
-if (SEND_BTN) {
-  SEND_BTN.addEventListener('click', ()=>{
-    const name = (NAME_INP.value || '').trim();
-    const phone= (PHONE_INP.value|| '').trim();
-    const addr = (ADDR_INP.value || '').trim();
-    const note = (NOTE_INP.value || '').trim();
+document.getElementById('sendOrder')?.addEventListener('click', ()=>{
+  const name = (NAME_INP?.value||'').trim();
+  const phone= (PHONE_INP?.value||'').trim();
+  const addr = (ADDR_INP?.value||'').trim();
+  const note = (NOTE_INP?.value||'').trim();
 
-    if (!name || !phone || !addr){
-      SHEET_ERROR.textContent = 'Merci de renseigner : Nom, Téléphone et Adresse.';
-      return;
-    }
-    if (CART.size === 0){
-      SHEET_ERROR.textContent = 'Votre panier est vide.';
-      return;
-    }
-    SHEET_ERROR.textContent = '';
+  if (!name || !phone || !addr){
+    SHEET_ERROR.textContent = 'Merci de renseigner : Nom, Téléphone et Adresse.';
+    return;
+  }
+  if (CART.size === 0){
+    SHEET_ERROR.textContent = 'Votre panier est vide.';
+    return;
+  }
+  SHEET_ERROR.textContent = '';
 
-    const items = Array.from(CART.values()).map(i=>({ title:i.title, price:numberOr(i.price,0), qty:i.qty }));
-    const payload = {
-      type: 'order',
-      total: numberOr(TOTAL,0),
-      customer: { name, phone, address: addr, note },
-      items
-    };
+  const items = Array.from(CART.values()).map(i=>({ title:i.title, price:num(i.price,0), qty:i.qty }));
+  const payload = { type:'order', total:num(TOTAL,0), customer:{ name, phone, address:addr, note }, items };
 
-    // Envoi via Telegram WebApp
-    if (window.Telegram && Telegram.WebApp) {
-      try {
-        Telegram.WebApp.expand();
-        Telegram.WebApp.sendData(JSON.stringify(payload));
-        Telegram.WebApp.close();
-      } catch (e) {
-        console.error('[ORDER] sendData error', e);
-        fallbackOpenBot(payload);
-      }
-    } else {
-      // Fallback hors Telegram
+  if (window.Telegram && Telegram.WebApp){
+    try {
+      Telegram.WebApp.expand();
+      Telegram.WebApp.sendData(JSON.stringify(payload));
+      Telegram.WebApp.close();
+    } catch (e){
+      console.error('[ORDER] sendData error', e);
       fallbackOpenBot(payload);
     }
-  });
-}
+  } else {
+    fallbackOpenBot(payload);
+  }
+});
 
 function fallbackOpenBot(payload){
   try{
