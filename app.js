@@ -4,10 +4,10 @@ const GH_REPO   = 'stonr';
 const GH_BRANCH = 'main';
 const GH_PATH   = 'content/produits'; // dossier à la racine du repo
 
-// (optionnel) si repo privé ou rate-limit : mets un token classic (scope: repo)
+// (optionnel) si repo privé ou rate-limit : mets un token classic (scope: repo / public_repo)
 const GH_TOKEN  = ''; // ex: 'ghp_xxx' sinon laisse ''
 
-// Variantes d'URL pour la liste des produits (on testera dans cet ordre)
+// Variantes d'URL pour la liste des produits (essai dans cet ordre)
 const GH_URLS = [
   `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}`,
   `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=refs/heads/${encodeURIComponent(GH_BRANCH)}`
@@ -128,107 +128,122 @@ LB_PREV  && (LB_PREV.onclick  = ()=>Lightbox.prev());
 LB_NEXT  && (LB_NEXT.onclick  = ()=>Lightbox.next());
 LB_EL && LB_EL.addEventListener('click', e=>{ if(e.target===LB_EL) Lightbox.close(); });
 
-// ================== LOAD PRODUCTS (try-all URLs + debug) ==================
+// ================== LOAD PRODUCTS (robuste, multi‑fallback) ==================
+async function listViaContentsAPI(headers){
+  for (const base of GH_URLS){
+    const url = antiCache(base);
+    try{
+      const r = await fetch(url, { headers });
+      if (r.ok) {
+        const arr = await r.json();
+        return arr.filter(x => /\.md$/i.test(x.name)).map(x => x.download_url);
+      } else {
+        console.warn('[ContentsAPI] fail', r.status, base, await r.text());
+      }
+    }catch(e){
+      console.warn('[ContentsAPI] error', base, e);
+    }
+  }
+  return null;
+}
+
+async function listViaTreesAPI(headers){
+  // Récupère tout l’arbre du repo puis filtre les .md sous content/produits
+  const base = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/git/trees/${encodeURIComponent(GH_BRANCH)}?recursive=1`;
+  const url  = antiCache(base);
+  try{
+    const r = await fetch(url, { headers });
+    if (!r.ok){ console.warn('[TreesAPI] fail', r.status, await r.text()); return null; }
+    const data = await r.json();
+    if (!data?.tree) return null;
+    const files = data.tree
+      .filter(n => n.type === 'blob' && n.path.startsWith(`${GH_PATH}/`) && /\.md$/i.test(n.path))
+      .map(n => `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/${n.path}`);
+    return files;
+  }catch(e){
+    console.warn('[TreesAPI] error', e);
+    return null;
+  }
+}
+
+async function listViaProductsJSON(headers){
+  // Dernier filet: un fichier JSON plat (racine) listant les URLs RAW des .md
+  const base = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/products.json`;
+  const url  = antiCache(base);
+  try{
+    const r = await fetch(url, { headers });
+    if (!r.ok){ console.warn('[products.json] fail', r.status, await r.text()); return null; }
+    const arr = await r.json();
+    return Array.isArray(arr) ? arr : null;
+  }catch(e){
+    console.warn('[products.json] error', e);
+    return null;
+  }
+}
+
 async function loadProducts(){
   const grid = GRID;
   const headers = makeHeaders();
 
-  // 1) Trouver une URL de liste valide
-  let listURL = null, res = null, lastTxt = '';
-  for (const base of GH_URLS){
-    const url = antiCache(base);
-    try {
-      const r = await fetch(url, { headers });
-      if (r.ok) { listURL = url; res = r; break; }
-      lastTxt = await r.text();
-      console.warn('[MENU] candidate failed', r.status, url, lastTxt);
-    } catch (e){
-      console.warn('[MENU] candidate error', url, e);
-    }
-  }
+  // 1) Contents API
+  let fileURLs = await listViaContentsAPI(headers);
 
-  if (!res){
+  // 2) Trees API
+  if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaTreesAPI(headers);
+
+  // 3) products.json
+  if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaProductsJSON(headers);
+
+  if (!fileURLs || fileURLs.length === 0) {
     grid.innerHTML = `
       <div style="background:#1b2129;border:1px solid #2a3440;border-radius:12px;padding:16px">
         <div style="font-weight:800;color:#ff6b6b">Impossible de charger le menu</div>
-        <div style="opacity:.85;margin-top:6px">Vérifie: repo public, dossier <b>${GH_PATH}</b> sur branche <b>${GH_BRANCH}</b>.</div>
-        <div style="opacity:.7;margin-top:6px">URLs testées:<br>${GH_URLS.map(u=>'- '+u).join('<br>')}</div>
+        <div style="opacity:.85;margin-top:6px">Vérifie: repo public, dossier <b>${GH_PATH}</b>, branche <b>${GH_BRANCH}</b>.</div>
+        <div style="opacity:.7;margin-top:6px">Astuce: ajoute un <code>products.json</code> (liste des URLs RAW des .md)</div>
       </div>`;
     return;
   }
 
-  // 2) Lire la liste des fichiers
-  let files;
-  try {
-    files = await res.json();
-  } catch(e){
-    grid.innerHTML = `<p>Réponse GitHub invalide.</p>`;
-    console.error('[MENU] JSON parse error', e);
-    return;
+  // Charger chaque .md RAW
+  const items = [];
+  for (const raw of fileURLs){
+    try{
+      const rf = await fetch(antiCache(raw), { headers });
+      if (!rf.ok){ console.warn('[file] fail', rf.status, raw, await rf.text()); continue; }
+      const md = await rf.text();
+      const fm = parseFrontmatter(md);
+      if (fm.published === false) continue;
+
+      const imgs=[], vids=[];
+      if (fm.image)  imgs.push(String(fm.image));
+      if (fm.images) String(fm.images).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>imgs.push(u));
+      if (fm.video)  vids.push(String(fm.video));
+      if (fm.videos) String(fm.videos).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>vids.push(u));
+
+      items.push({
+        title: fm.title || raw.split('/').pop().replace(/\.md$/,''),
+        price: (typeof fm.price==='number') ? fm.price : Number(fm.price||0),
+        badge: fm.badge || '',
+        category: fm.category || '',
+        farm: fm.farm || '',
+        order: (typeof fm.order==='number') ? fm.order : Number(fm.order||0),
+        media: [
+          ...imgs.map(src=>({type:'image', src})),
+          ...vids.map(src=>({type:'video', src}))
+        ]
+      });
+    }catch(e){
+      console.warn('[file] error', raw, e);
+    }
   }
-  if (!Array.isArray(files) || files.length === 0){
+
+  items.sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title).localeCompare(String(b.title)));
+
+  if (!items.length){
     grid.innerHTML = '<p>Aucun produit publié.</p>';
     return;
   }
 
-  // 3) Charger chaque .md
-  const items = [];
-  for (const f of files){
-    if (!/\.md$/i.test(f.name)) continue;
-    const raw = (f.download_url || '').trim();
-    if (!raw) continue;
-
-    const fileURL = antiCache(raw);
-    let md = '';
-    try {
-      const rf = await fetch(fileURL, { headers });
-      if (!rf.ok){
-        console.warn('[MENU] file fetch failed', rf.status, fileURL, await rf.text());
-        continue;
-      }
-      md = await rf.text();
-    } catch(e){
-      console.warn('[MENU] read file error', fileURL, e);
-      continue;
-    }
-
-    const fm = parseFrontmatter(md);
-
-    // N'afficher PAS seulement si published === false
-    if (fm.published === false) continue;
-
-    // Médias
-    const imgs=[], vids=[];
-    if (fm.image)  imgs.push(String(fm.image));
-    if (fm.images) String(fm.images).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>imgs.push(u));
-    if (fm.video)  vids.push(String(fm.video));
-    if (fm.videos) String(fm.videos).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>vids.push(u));
-
-    items.push({
-      title: fm.title || f.name.replace(/\.md$/,''),
-      price: num(fm.price, 0),
-      badge: fm.badge || '',
-      category: fm.category || '',
-      farm: fm.farm || '',
-      order: num(fm.order, 0),
-      media: [
-        ...imgs.map(src=>({type:'image', src})),
-        ...vids.map(src=>({type:'video', src}))
-      ]
-    });
-  }
-
-  // 4) Tri + rendu
-  items.sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title).localeCompare(String(b.title)));
-  if (!items.length){
-    grid.innerHTML = `
-      <div style="background:#1b2129;border:1px solid #2a3440;border-radius:12px;padding:16px">
-        <div style="font-weight:800">Aucun produit publié</div>
-        <div style="opacity:.8;margin-top:6px">Ajoute un .md dans <b>${GH_PATH}</b> avec <code>published: true</code>.</div>
-        <div style="opacity:.6;margin-top:6px">URL utilisée : ${listURL}</div>
-      </div>`;
-    return;
-  }
   ALL_ITEMS = items;
   setupFilters(ALL_ITEMS);
   applyFiltersAndRender();
