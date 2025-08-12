@@ -1,20 +1,23 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <title>Backoffice CMS</title>
-  <meta name="robots" content="noindex"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <script src="https://unpkg.com/decap-cms@^3.0.0/dist/decap-cms.js"></script>
-  <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+  <meta charset="UTF-8">
+  <title>Backoffice</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Netlify CMS -->
+  <script src="https://unpkg.com/netlify-cms@2.10.192/dist/netlify-cms.js"></script>
 </head>
 <body>
   <script>
-    if (window.netlifyIdentity) {
-      window.netlifyIdentity.on('init', u => { 
-        if (!u) window.netlifyIdentity.open(); 
+    // Si la config ne charge pas → afficher un message
+    fetch('/backoffice/config.yml')
+      .then(r => {
+        if (!r.ok) throw new Error('Config.yml introuvable');
+        console.log('✅ Config.yml chargé');
+      })
+      .catch(err => {
+        document.body.innerHTML = '<h1>Erreur : config.yml introuvable</h1><p>' + err + '</p>';
       });
-    }
   </script>
 </body>
 </html>

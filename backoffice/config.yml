@@ -11,11 +11,8 @@ collections:
     folder: "content/produits"
     create: true
     slug: "{{slug}}"
-    format: "frontmatter"
     fields:
-      - { label: "Titre", name: "title", widget: "string" }
+      - { label: "Nom", name: "title", widget: "string" }
+      - { label: "Prix (€)", name: "price", widget: "number" }
       - { label: "Description", name: "description", widget: "text" }
-      - { label: "Prix (€)", name: "price", widget: "number", value_type: "float", min: 0, step: 0.1 }
       - { label: "Image", name: "image", widget: "image" }
-      - { label: "Vidéo (optionnel)", name: "video", widget: "string", required: false }
-      - { label: "Publié", name: "published", widget: "boolean", default: true }
