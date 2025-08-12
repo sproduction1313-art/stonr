@@ -9,20 +9,14 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- BACKGROUND + OVERLAY -->
+  <!-- BACKGROUND -->
   <div class="bg"></div>
   <div class="scrim"></div>
 
-  <!-- APP -->
-  <header class="appbar">
-    <div class="brand">
-      <img class="logo" src="assets/logo.png" alt="logo" />
-      <div class="titles">
-        <h1 class="app-title">Menu</h1>
-        <p class="app-sub">mini‑application</p>
-      </div>
-    </div>
-    <div class="dots" aria-hidden="true">•••</div>
+  <!-- Header centré -->
+  <header class="header">
+    <img class="hero-logo" src="assets/logo.png" alt="logo" />
+    <h1 class="hero-title">Menu</h1>
   </header>
 
   <!-- Filtres -->
@@ -40,14 +34,6 @@
 
   <!-- Bouton panier / checkout -->
   <button id="checkoutBtn" class="fab" disabled>Envoyer la commande — 0,00€</button>
-
-  <!-- Bottom nav (facultatif) -->
-  <nav class="tabbar">
-    <a class="tab active" href="#"><span class="ico">🏠</span><span>Menu</span></a>
-    <a class="tab" href="#infos"><span class="ico">ℹ️</span><span>Infos</span></a>
-    <a class="tab" href="#canal"><span class="ico">📣</span><span>Canal</span></a>
-    <a class="tab" href="#contact"><span class="ico">✉️</span><span>Contact</span></a>
-  </nav>
 
   <!-- Lightbox galerie -->
   <div id="lightbox" class="lightbox" aria-hidden="true">
