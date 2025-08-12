@@ -1,5 +1,0 @@
-/admin/*
-  Basic-Auth: admin 1005
-
-/backoffice/*
-  Basic-Auth: admin 1005
