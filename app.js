@@ -1,242 +1,36 @@
-const GRID = document.getElementById('grid');
-const FAB = document.getElementById('checkoutBtn');
+const btn = document.getElementById('send-btn');
+const fields = ['name', 'phone', 'address'];
 
-// ⚙️ GitHub (produits .md)
-const GH_OWNER = 'sproduction1313-art';
-const GH_REPO  = 'stonr';
-const GH_PATH  = 'content/produits';
-const GH_BRANCH= 'main';
+fields.forEach(id => {
+  document.getElementById(id).addEventListener('input', checkForm);
+});
 
-// 🛒 Panier en mémoire
-const CART = new Map(); // key: title, value: {title, price, qty}
-let TOTAL = 0;
-
-// ====== FRONTMATTER ======
-function parseFrontmatter(md){
-  const m = /^---\s*([\s\S]*?)\s*---/m.exec(md);
-  const fm = {}; let body = md;
-  if (m) {
-    body = md.slice(m[0].length);
-    m[1].split('\n').forEach(line=>{
-      if(!line.trim()) return;
-      const i = line.indexOf(':'); if(i<0) return;
-      const k = line.slice(0,i).trim();
-      let v = line.slice(i+1).trim();
-      if (v==='true') v = true;
-      else if (v==='false') v = false;
-      else if (!isNaN(v) && v!=='') v = Number(v);
-      fm[k]=v;
-    });
-  }
-  return { fm, body };
+function checkForm() {
+  const allFilled = fields.every(id => document.getElementById(id).value.trim() !== "");
+  btn.disabled = !allFilled;
 }
 
-// ====== LIGHTBOX (galerie) ======
-const lb = {
-  el: document.getElementById('lightbox'),
-  stage: document.getElementById('lbStage'),
-  ind: document.getElementById('lbInd'),
-  idx: 0, media: [],
-  open(media, i=0){ this.media=media; this.idx=i; this.render(); this.el.classList.add('open'); this.el.setAttribute('aria-hidden','false'); },
-  close(){ this.el.classList.remove('open'); this.el.setAttribute('aria-hidden','true'); this.stage.innerHTML=''; this.ind.innerHTML=''; },
-  prev(){ this.idx=(this.idx-1+this.media.length)%this.media.length; this.render(); },
-  next(){ this.idx=(this.idx+1)%this.media.length; this.render(); },
-  render(){
-    const m=this.media[this.idx]; this.stage.innerHTML='';
-    const node = m.type==='video' ? Object.assign(document.createElement('video'),{controls:true,autoplay:true,src:m.src}) : Object.assign(document.createElement('img'),{src:m.src});
-    this.stage.appendChild(node);
-    this.ind.innerHTML=this.media.map((_,j)=>`<span class="${j===this.idx?'on':''}"></span>`).join('');
-  }
-};
-document.getElementById('lbClose').onclick=()=>lb.close();
-document.getElementById('lbPrev').onclick=()=>lb.prev();
-document.getElementById('lbNext').onclick=()=>lb.next();
-lb.el.addEventListener('click', e=>{ if(e.target===lb.el) lb.close(); });
+btn.addEventListener('click', () => {
+  const name = document.getElementById('name').value;
+  const phone = document.getElementById('phone').value;
+  const address = document.getElementById('address').value;
+  const note = document.getElementById('note').value;
 
-// ====== PRODUITS ======
-async function loadProducts(){
-  const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}`;
-  const res = await fetch(url);
-  const files = await res.json();
-  if (!Array.isArray(files)) return;
+  const orderDetails = `📦 Nouvelle commande :
+👤 Nom: ${name}
+📞 Téléphone: ${phone}
+📍 Adresse: ${address}
+📝 Note: ${note}`;
 
-  const items = [];
-  for (const f of files) {
-    if (!/\.md$/i.test(f.name)) continue;
-    const txt = await (await fetch(f.download_url)).text();
-    const { fm } = parseFrontmatter(txt);
-    if (fm.published === false) continue;
-
-    const images = [];
-    const videos = [];
-    if (fm.image) images.push(String(fm.image));
-    if (fm.images) String(fm.images).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>images.push(u));
-    if (fm.video) videos.push(String(fm.video));
-    if (fm.videos) String(fm.videos).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>videos.push(u));
-
-    const media = [
-      ...images.map(src=>({type:'image', src})),
-      ...videos.map(src=>({type:'video', src}))
-    ];
-
-    items.push({
-      title: fm.title || 'Sans titre',
-      price: (typeof fm.price==='number') ? fm.price : Number(fm.price||0),
-      badge: fm.badge || '',
-      category: fm.category || '',
-      farm: fm.farm || '',
-      order: fm.order || 0,
-      media
-    });
-  }
-
-  setupFilters(items);
-  render(items);
-}
-
-function setupFilters(items){
-  const cats = Array.from(new Set(items.map(i=>i.category).filter(Boolean))).sort();
-  const farms = Array.from(new Set(items.map(i=>i.farm).filter(Boolean))).sort();
-
-  const catBtn = document.getElementById('chipCategory');
-  const farmBtn = document.getElementById('chipFarm');
-  let curCat = null, curFarm = null;
-
-  catBtn.onclick = ()=>{
-    const c = prompt(`Catégorie:\n${['(Toutes)', ...cats].join('\n')}`) || '';
-    curCat = (c && c!=='(Toutes)') ? c : null;
-    document.getElementById('labelCategory').textContent = curCat || 'Toutes les catégories';
-    apply();
-  };
-  farmBtn.onclick = ()=>{
-    const c = prompt(`Farm:\n${['(Toutes)', ...farms].join('\n')}`) || '';
-    curFarm = (c && c!=='(Toutes)') ? c : null;
-    document.getElementById('labelFarm').textContent = curFarm || 'Toutes les farms';
-    apply();
-  };
-
-  function apply(){
-    const filtered = items.filter(i =>
-      (!curCat || i.category===curCat) &&
-      (!curFarm || i.farm===curFarm)
-    ).sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title).localeCompare(b.title));
-    render(filtered);
-  }
-}
-
-function render(items){
-  GRID.innerHTML = '';
-  items.forEach(item=>{
-    const cover = item.media[0];
-
-    const card = document.createElement('article');
-    card.className = 'card';
-
-    const mediaBox = document.createElement('div');
-    mediaBox.className = 'media';
-    if (cover) {
-      if (cover.type==='video') {
-        const v = document.createElement('video');
-        v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true; v.src = cover.src;
-        mediaBox.appendChild(v);
-        const play = document.createElement('div'); play.className='play'; play.textContent='▶︎'; mediaBox.appendChild(play);
-      } else {
-        const img = document.createElement('img'); img.src = cover.src; img.alt = item.title; mediaBox.appendChild(img);
-      }
-    }
-    if (item.badge) { const b=document.createElement('div'); b.className='badge'; b.textContent=item.badge.toUpperCase(); mediaBox.appendChild(b); }
-    mediaBox.addEventListener('click', ()=> lb.open(item.media, 0));
-
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.innerHTML = `
-      <h3 class="title">${item.title}</h3>
-      ${item.category || item.farm ? `<p class="sub">${[item.category,item.farm].filter(Boolean).join(' · ')}</p>`:''}
-      ${item.price ? `<div class="price">${item.price.toFixed(2)}€</div>`:''}
-      <button class="btnAdd">Ajouter</button>
-    `;
-
-    // Ajouter au panier
-    meta.querySelector('.btnAdd').onclick = ()=>{
-      const cur = CART.get(item.title) || {title:item.title, price:item.price, qty:0};
-      cur.qty += 1; CART.set(item.title, cur);
-      recalcTotal();
-    };
-
-    card.appendChild(mediaBox);
-    card.appendChild(meta);
-    GRID.appendChild(card);
-  });
-}
-
-function recalcTotal(){
-  TOTAL = 0;
-  CART.forEach(it=>{ TOTAL += it.price * it.qty; });
-  FAB.textContent = `Envoyer la commande — ${TOTAL.toFixed(2)}€`;
-  FAB.disabled = TOTAL <= 0;
-}
-
-// ====== CHECKOUT ======
-const sheet = document.getElementById('sheet');
-const sheetClose = document.getElementById('sheetClose');
-const sheetTotal = document.getElementById('sheetTotal');
-const sheetError = document.getElementById('sheetError');
-
-FAB.onclick = ()=>{
-  sheetTotal.textContent = `Total : ${TOTAL.toFixed(2)}€`;
-  sheet.classList.add('open');
-  sheet.setAttribute('aria-hidden','false');
-};
-sheetClose.onclick = ()=>{ sheet.classList.remove('open'); sheet.setAttribute('aria-hidden','true'); };
-sheet.addEventListener('click', e=>{ if(e.target===sheet) sheetClose.click(); });
-
-document.getElementById('sendOrder').onclick = ()=>{
-  const name = document.getElementById('name').value.trim();
-  const phone = document.getElementById('phone').value.trim();
-  const address = document.getElementById('address').value.trim();
-  const note = document.getElementById('note').value.trim();
-
-  // Validation
-  if (!name || !phone || !address){
-    sheetError.textContent = "Merci de renseigner : Nom, Téléphone et Adresse.";
-    return;
-  }
-  if (CART.size === 0){
-    sheetError.textContent = "Votre panier est vide.";
-    return;
-  }
-  sheetError.textContent = "";
-
-  // Prépare le payload
-  const items = Array.from(CART.values()).map(i=>({title:i.title, price:i.price, qty:i.qty}));
-  const payload = {
-    type: 'order',
-    total: Number(TOTAL.toFixed(2)),
-    customer: { name, phone, address, note },
-    items
-  };
-
-  // Envoi à Telegram (mini-app)
-  if (window.Telegram && Telegram.WebApp) {
-    try{
-      Telegram.WebApp.expand();
-      Telegram.WebApp.sendData(JSON.stringify(payload)); // reçu côté bot dans web_app_data
-      Telegram.WebApp.close(); // ferme la mini-app
-    }catch(e){
-      console.error(e);
-      fallbackOpenBot(payload);
-    }
-  } else {
-    // Fallback navigateur normal
-    fallbackOpenBot(payload);
-  }
-};
-
-function fallbackOpenBot(payload){
-  // Ouvre le bot avec un param (tu traiteras côté bot si tu veux)
-  const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
-  window.location.href = `https://t.me/LeStandardisteBot?startapp=${encoded}`;
-}
-
-// ====== START ======
-loadProducts();
+  // ⚠️ Mets ton vrai token et chat_id ici
+  const token = "TON_TOKEN_BOT";
+  const chatId = "TON_CHAT_ID";
+  fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text: orderDetails })
+  })
+  .then(res => res.json())
+  .then(data => alert("Commande envoyée ✅"))
+  .catch(err => alert("Erreur lors de l'envoi ❌"));
+});
