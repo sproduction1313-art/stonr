@@ -5,9 +5,10 @@ const GH_BRANCH = 'main';
 const GH_PATH   = 'content/produits'; // dossier à la racine du repo
 
 // (optionnel) si repo privé ou rate-limit : mets un token classic (scope: repo / public_repo)
+// ATTENTION: visible côté client. Utiliser seulement si nécessaire.
 const GH_TOKEN  = ''; // ex: 'ghp_xxx' sinon laisse ''
 
-// Variantes d'URL pour la liste des produits (essai dans cet ordre)
+// Variantes d'URL pour la liste des produits (API GitHub → on testera dans cet ordre)
 const GH_URLS = [
   `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}`,
   `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=refs/heads/${encodeURIComponent(GH_BRANCH)}`
@@ -54,6 +55,7 @@ let TOTAL = 0;
 const antiCache = url => url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
 
 function makeHeaders(){
+  // Headers UNIQUEMENT pour l’API GitHub (pas pour RAW)
   const h = { 'Cache-Control': 'no-cache' };
   if (GH_TOKEN) h['Authorization'] = 'Bearer ' + GH_TOKEN;
   return h;
@@ -128,7 +130,31 @@ LB_PREV  && (LB_PREV.onclick  = ()=>Lightbox.prev());
 LB_NEXT  && (LB_NEXT.onclick  = ()=>Lightbox.next());
 LB_EL && LB_EL.addEventListener('click', e=>{ if(e.target===LB_EL) Lightbox.close(); });
 
-// ================== LOAD PRODUCTS (robuste, multi‑fallback) ==================
+// ================== LISTE DES FICHIERS PRODUITS ==================
+// 1) products.json même-origine (pas de CORS), puis GitHub RAW (sans headers)
+async function listViaProductsJSON(){
+  // Essai 1 : même origine (Netlify)
+  try{
+    const r0 = await fetch('/products.json?t=' + Date.now(), { cache: 'no-store' });
+    if (r0.ok) {
+      const arr0 = await r0.json();
+      if (Array.isArray(arr0) && arr0.length) return arr0;
+    }
+  }catch(e){ /* ignore */ }
+
+  // Essai 2 : GitHub RAW (SANS headers → évite le préflight CORS)
+  const base = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/products.json`;
+  try{
+    const r = await fetch(base + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return null;
+    const arr = await r.json();
+    return Array.isArray(arr) ? arr : null;
+  }catch(e){
+    return null;
+  }
+}
+
+// 2) GitHub Contents API (headers OK ici)
 async function listViaContentsAPI(headers){
   for (const base of GH_URLS){
     const url = antiCache(base);
@@ -147,8 +173,8 @@ async function listViaContentsAPI(headers){
   return null;
 }
 
+// 3) Git Trees API (headers OK ici)
 async function listViaTreesAPI(headers){
-  // Récupère tout l’arbre du repo puis filtre les .md sous content/produits
   const base = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/git/trees/${encodeURIComponent(GH_BRANCH)}?recursive=1`;
   const url  = antiCache(base);
   try{
@@ -166,49 +192,32 @@ async function listViaTreesAPI(headers){
   }
 }
 
-async function listViaProductsJSON(headers){
-  // Dernier filet: un fichier JSON plat (racine) listant les URLs RAW des .md
-  const base = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/products.json`;
-  const url  = antiCache(base);
-  try{
-    const r = await fetch(url, { headers });
-    if (!r.ok){ console.warn('[products.json] fail', r.status, await r.text()); return null; }
-    const arr = await r.json();
-    return Array.isArray(arr) ? arr : null;
-  }catch(e){
-    console.warn('[products.json] error', e);
-    return null;
-  }
-}
-
+// ================== CHARGEMENT PRODUITS (robuste, anti‑CORS) ==================
 async function loadProducts(){
   const grid = GRID;
   const headers = makeHeaders();
 
-  // 1) Contents API
-  let fileURLs = await listViaContentsAPI(headers);
-
-  // 2) Trees API
+  // Ordre : same-origin products.json → Contents API → Trees API → RAW products.json
+  let fileURLs = await listViaProductsJSON();
+  if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaContentsAPI(headers);
   if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaTreesAPI(headers);
-
-  // 3) products.json
-  if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaProductsJSON(headers);
+  if (!fileURLs || fileURLs.length === 0) fileURLs = await listViaProductsJSON(); // re‑essai (au cas où)
 
   if (!fileURLs || fileURLs.length === 0) {
     grid.innerHTML = `
       <div style="background:#1b2129;border:1px solid #2a3440;border-radius:12px;padding:16px">
         <div style="font-weight:800;color:#ff6b6b">Impossible de charger le menu</div>
         <div style="opacity:.85;margin-top:6px">Vérifie: repo public, dossier <b>${GH_PATH}</b>, branche <b>${GH_BRANCH}</b>.</div>
-        <div style="opacity:.7;margin-top:6px">Astuce: ajoute un <code>products.json</code> (liste des URLs RAW des .md)</div>
+        <div style="opacity:.7;margin-top:6px">Astuce: ajoute un <code>products.json</code> à la racine du repo ou du site.</div>
       </div>`;
     return;
   }
 
-  // Charger chaque .md RAW
+  // Charger chaque .md RAW (SANS headers → évite CORS)
   const items = [];
   for (const raw of fileURLs){
     try{
-      const rf = await fetch(antiCache(raw), { headers });
+      const rf = await fetch(antiCache(raw), { cache: 'no-store' });
       if (!rf.ok){ console.warn('[file] fail', rf.status, raw, await rf.text()); continue; }
       const md = await rf.text();
       const fm = parseFrontmatter(md);
@@ -249,7 +258,7 @@ async function loadProducts(){
   applyFiltersAndRender();
 }
 
-// ================== FILTERS ==================
+// ================== FILTRES ==================
 function setupFilters(items){
   const cats  = Array.from(new Set(items.map(i=>i.category).filter(Boolean))).sort();
   const farms = Array.from(new Set(items.map(i=>i.farm).filter(Boolean))).sort();
@@ -276,7 +285,7 @@ function applyFiltersAndRender(){
   render(list);
 }
 
-// ================== RENDER ==================
+// ================== RENDU ==================
 function render(items){
   GRID.innerHTML = '';
   items.forEach(item=>{
@@ -324,7 +333,7 @@ function render(items){
   });
 }
 
-// ================== CART & CHECKOUT ==================
+// ================== PANIER & CHECKOUT ==================
 function recalcTotal(){
   TOTAL = 0;
   CART.forEach(it=> TOTAL += it.price * it.qty);
