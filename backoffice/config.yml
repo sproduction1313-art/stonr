@@ -43,6 +43,6 @@ collections:
               - { label: "Titre", name: "title", widget: "string" }
               - { label: "Prix (€)", name: "price", widget: "number", value_type: "float", min: 0, step: 0.1 }
               - { label: "Badge", name: "badge", widget: "string", required: false }
-              - { label: "Image", name: "image", widget: "image", required: false }
+              - { label: "Image (upload)", name: "image", widget: "image", required: false }
               - { label: "Vidéo (URL)", name: "video", widget: "string", required: false }
               - { label: "Actif", name: "active", widget: "boolean", default: true }
