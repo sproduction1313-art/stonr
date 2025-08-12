@@ -1,0 +1,53 @@
+name: Auto build products.json
+
+on:
+  push:
+    paths:
+      - 'content/produits/**'
+      - '.github/workflows/auto-products.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate products.json
+        run: |
+          set -e
+          # Dossier des produits
+          DIR="content/produits"
+
+          # Crée un tableau JSON avec toutes les URLs RAW des .md
+          echo '[' > products.json
+          first=1
+          for f in $(git ls-files "${DIR}/*.md"); do
+            # skip si aucun fichier
+            [ -e "$f" ] || continue
+            url="https://raw.githubusercontent.com/${{ github.repository }}/main/$f"
+            if [ $first -eq 0 ]; then echo ',' >> products.json; fi
+            printf '  "%s"' "$url" >> products.json
+            first=0
+          done
+          echo '' >> products.json
+          echo ']' >> products.json
+
+          echo "=== products.json ==="
+          cat products.json
+
+      - name: Commit & push if changed
+        run: |
+          set -e
+          if git diff --quiet -- products.json; then
+            echo "No changes in products.json"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add products.json
+          git commit -m "Auto-update products.json"
+          git push
