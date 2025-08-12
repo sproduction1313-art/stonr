@@ -3,27 +3,39 @@ const GH_OWNER  = 'sproduction1313-art';
 const GH_REPO   = 'stonr';
 const GH_BRANCH = 'main';
 const GH_PATH   = 'content/produits'; // dossier à la racine du repo
-const TELEGRAM_BOT_USERNAME = 'LeStandardisteBot'; // fallback hors mini‑app
+
+// (optionnel) si repo privé ou rate-limit : mets un token classic (scope: repo)
+const GH_TOKEN  = ''; // ex: 'ghp_xxx' sinon laisse ''
+
+// Variantes d'URL pour la liste des produits (on testera dans cet ordre)
+const GH_URLS = [
+  `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}`,
+  `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=refs/heads/${encodeURIComponent(GH_BRANCH)}`
+];
+
+// Fallback si l'app n'est pas ouverte dans Telegram
+const TELEGRAM_BOT_USERNAME = 'LeStandardisteBot';
 
 // ================== DOM ==================
-const GRID   = document.getElementById('grid');
-const FAB    = document.getElementById('checkoutBtn');
+const GRID        = document.getElementById('grid');
+const FAB         = document.getElementById('checkoutBtn');
 
 const SHEET       = document.getElementById('sheet');
 const SHEET_CLOSE = document.getElementById('sheetClose');
 const SHEET_TOTAL = document.getElementById('sheetTotal');
 const SHEET_ERROR = document.getElementById('sheetError');
 
-const NAME_INP  = document.getElementById('name');
-const PHONE_INP = document.getElementById('phone');
-const ADDR_INP  = document.getElementById('address');
-const NOTE_INP  = document.getElementById('note');
+const NAME_INP    = document.getElementById('name');
+const PHONE_INP   = document.getElementById('phone');
+const ADDR_INP    = document.getElementById('address');
+const NOTE_INP    = document.getElementById('note');
 
-const CHIP_CAT = document.getElementById('chipCategory');
-const CHIP_FARM= document.getElementById('chipFarm');
-const LAB_CAT  = document.getElementById('labelCategory');
-const LAB_FARM = document.getElementById('labelFarm');
+const CHIP_CAT    = document.getElementById('chipCategory');
+const CHIP_FARM   = document.getElementById('chipFarm');
+const LAB_CAT     = document.getElementById('labelCategory');
+const LAB_FARM    = document.getElementById('labelFarm');
 
+// Lightbox
 const LB_EL    = document.getElementById('lightbox');
 const LB_STAGE = document.getElementById('lbStage');
 const LB_IND   = document.getElementById('lbInd');
@@ -32,13 +44,20 @@ const LB_PREV  = document.getElementById('lbPrev');
 const LB_NEXT  = document.getElementById('lbNext');
 
 // ================== STATE ==================
-let ALL_ITEMS = [];                 // liste complète
+let ALL_ITEMS = [];                 // [{title, price, badge, category, farm, order, media:[{type,src}]}]
 let FILTER = { category:null, farm:null };
+
 const CART = new Map();             // key=title -> {title, price, qty}
 let TOTAL = 0;
 
 // ================== UTILS ==================
 const antiCache = url => url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+function makeHeaders(){
+  const h = { 'Cache-Control': 'no-cache' };
+  if (GH_TOKEN) h['Authorization'] = 'Bearer ' + GH_TOKEN;
+  return h;
+}
 
 function num(v, def=0){
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -73,8 +92,19 @@ function parseFrontmatter(md){
 // ================== LIGHTBOX ==================
 const Lightbox = {
   media: [], idx: 0,
-  open(list, i=0){ this.media = Array.isArray(list)?list:[]; this.idx=Math.max(0,Math.min(i,this.media.length-1)); this.render(); LB_EL.classList.add('open'); LB_EL.setAttribute('aria-hidden','false'); },
-  close(){ LB_EL.classList.remove('open'); LB_EL.setAttribute('aria-hidden','true'); LB_STAGE.innerHTML=''; LB_IND.innerHTML=''; this.media=[]; this.idx=0; },
+  open(list, i=0){
+    this.media = Array.isArray(list)?list:[];
+    this.idx = Math.max(0, Math.min(i, this.media.length-1));
+    this.render();
+    LB_EL.classList.add('open');
+    LB_EL.setAttribute('aria-hidden','false');
+  },
+  close(){
+    LB_EL.classList.remove('open');
+    LB_EL.setAttribute('aria-hidden','true');
+    LB_STAGE.innerHTML=''; LB_IND.innerHTML='';
+    this.media=[]; this.idx=0;
+  },
   prev(){ if(!this.media.length) return; this.idx=(this.idx-1+this.media.length)%this.media.length; this.render(); },
   next(){ if(!this.media.length) return; this.idx=(this.idx+1)%this.media.length; this.render(); },
   render(){
@@ -82,7 +112,7 @@ const Lightbox = {
     if (!this.media.length) return;
     const m = this.media[this.idx];
     let node;
-    if (m.type === 'video') {
+    if (m.type === 'video'){
       node = document.createElement('video');
       node.controls = true; node.autoplay = true; node.src = m.src;
     } else {
@@ -98,50 +128,81 @@ LB_PREV  && (LB_PREV.onclick  = ()=>Lightbox.prev());
 LB_NEXT  && (LB_NEXT.onclick  = ()=>Lightbox.next());
 LB_EL && LB_EL.addEventListener('click', e=>{ if(e.target===LB_EL) Lightbox.close(); });
 
-// ================== LOAD PRODUCTS ==================
+// ================== LOAD PRODUCTS (try-all URLs + debug) ==================
 async function loadProducts(){
-  const listURL = antiCache(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}`);
-  console.log('[MENU] list:', listURL);
-  let res;
-  try {
-    res = await fetch(listURL, { headers:{'Cache-Control':'no-cache'} });
-  } catch (e){
-    console.error('[MENU] fetch error', e);
-    GRID.innerHTML = '<p>Impossible de charger le menu.</p>';
-    return;
+  const grid = GRID;
+  const headers = makeHeaders();
+
+  // 1) Trouver une URL de liste valide
+  let listURL = null, res = null, lastTxt = '';
+  for (const base of GH_URLS){
+    const url = antiCache(base);
+    try {
+      const r = await fetch(url, { headers });
+      if (r.ok) { listURL = url; res = r; break; }
+      lastTxt = await r.text();
+      console.warn('[MENU] candidate failed', r.status, url, lastTxt);
+    } catch (e){
+      console.warn('[MENU] candidate error', url, e);
+    }
   }
-  if (!res.ok){
-    console.error('[MENU] list failed', res.status, await res.text());
-    GRID.innerHTML = '<p>Impossible de charger le menu.</p>';
-    return;
-  }
-  const files = await res.json();
-  if (!Array.isArray(files) || files.length===0){
-    GRID.innerHTML = '<p>Aucun produit publié.</p>';
+
+  if (!res){
+    grid.innerHTML = `
+      <div style="background:#1b2129;border:1px solid #2a3440;border-radius:12px;padding:16px">
+        <div style="font-weight:800;color:#ff6b6b">Impossible de charger le menu</div>
+        <div style="opacity:.85;margin-top:6px">Vérifie: repo public, dossier <b>${GH_PATH}</b> sur branche <b>${GH_BRANCH}</b>.</div>
+        <div style="opacity:.7;margin-top:6px">URLs testées:<br>${GH_URLS.map(u=>'- '+u).join('<br>')}</div>
+      </div>`;
     return;
   }
 
+  // 2) Lire la liste des fichiers
+  let files;
+  try {
+    files = await res.json();
+  } catch(e){
+    grid.innerHTML = `<p>Réponse GitHub invalide.</p>`;
+    console.error('[MENU] JSON parse error', e);
+    return;
+  }
+  if (!Array.isArray(files) || files.length === 0){
+    grid.innerHTML = '<p>Aucun produit publié.</p>';
+    return;
+  }
+
+  // 3) Charger chaque .md
   const items = [];
   for (const f of files){
     if (!/\.md$/i.test(f.name)) continue;
+    const raw = (f.download_url || '').trim();
+    if (!raw) continue;
 
-    const md = await (await fetch(antiCache(f.download_url), { headers:{'Cache-Control':'no-cache'} })).text();
+    const fileURL = antiCache(raw);
+    let md = '';
+    try {
+      const rf = await fetch(fileURL, { headers });
+      if (!rf.ok){
+        console.warn('[MENU] file fetch failed', rf.status, fileURL, await rf.text());
+        continue;
+      }
+      md = await rf.text();
+    } catch(e){
+      console.warn('[MENU] read file error', fileURL, e);
+      continue;
+    }
+
     const fm = parseFrontmatter(md);
 
-    // masquer uniquement si published === false
+    // N'afficher PAS seulement si published === false
     if (fm.published === false) continue;
 
-    const imgs = [];
-    const vids = [];
+    // Médias
+    const imgs=[], vids=[];
     if (fm.image)  imgs.push(String(fm.image));
     if (fm.images) String(fm.images).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>imgs.push(u));
     if (fm.video)  vids.push(String(fm.video));
     if (fm.videos) String(fm.videos).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>vids.push(u));
-
-    const media = [
-      ...imgs.map(src=>({type:'image', src})),
-      ...vids.map(src=>({type:'video', src}))
-    ];
 
     items.push({
       title: fm.title || f.name.replace(/\.md$/,''),
@@ -150,11 +211,25 @@ async function loadProducts(){
       category: fm.category || '',
       farm: fm.farm || '',
       order: num(fm.order, 0),
-      media
+      media: [
+        ...imgs.map(src=>({type:'image', src})),
+        ...vids.map(src=>({type:'video', src}))
+      ]
     });
   }
 
-  ALL_ITEMS = items.sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title).localeCompare(String(b.title)));
+  // 4) Tri + rendu
+  items.sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title).localeCompare(String(b.title)));
+  if (!items.length){
+    grid.innerHTML = `
+      <div style="background:#1b2129;border:1px solid #2a3440;border-radius:12px;padding:16px">
+        <div style="font-weight:800">Aucun produit publié</div>
+        <div style="opacity:.8;margin-top:6px">Ajoute un .md dans <b>${GH_PATH}</b> avec <code>published: true</code>.</div>
+        <div style="opacity:.6;margin-top:6px">URL utilisée : ${listURL}</div>
+      </div>`;
+    return;
+  }
+  ALL_ITEMS = items;
   setupFilters(ALL_ITEMS);
   applyFiltersAndRender();
 }
@@ -195,6 +270,7 @@ function render(items){
     const card = document.createElement('article');
     card.className = 'card';
 
+    // Media 200x200
     const mediaBox = document.createElement('div');
     mediaBox.className = 'media';
     if (cover){
