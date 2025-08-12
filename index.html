@@ -4,48 +4,89 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Menu</title>
-  <meta name="theme-color" content="#0f0f10" />
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="theme-color" content="#0b0d10" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- BACKGROUND + OVERLAY -->
+  <div class="bg"></div>
+  <div class="scrim"></div>
 
-  <header class="header">
-    <img src="assets/logo.png" alt="Logo" class="logo" />
-    <h1 class="title">Menu</h1>
-  </header>
-
-  <main id="content">
-    <div class="grid" id="menu-grid">
-      <!-- Exemple produit -->
-      <div class="item">
-        <img src="assets/item1.jpg" alt="Produit 1" />
-        <p>Produit 1 - 10€</p>
-      </div>
-      <div class="item">
-        <img src="assets/item2.jpg" alt="Produit 2" />
-        <p>Produit 2 - 15€</p>
+  <!-- APP -->
+  <header class="appbar">
+    <div class="brand">
+      <img class="logo" src="assets/logo.png" alt="logo" />
+      <div class="titles">
+        <h1 class="app-title">Menu</h1>
+        <p class="app-sub">mini‑application</p>
       </div>
     </div>
+    <div class="dots" aria-hidden="true">•••</div>
+  </header>
 
-    <section class="form-section">
-      <h2>Infos de livraison</h2>
-      <label>Nom/Prénom
-        <input id="name" type="text" placeholder="Ton nom" required />
-      </label>
-      <label>Téléphone
-        <input id="phone" type="tel" placeholder="+33..." required />
-      </label>
-      <label>Adresse complète
-        <textarea id="address" rows="3" placeholder="N°, rue, code postal, ville" required></textarea>
-      </label>
-      <label>Note (optionnel)
-        <textarea id="note" rows="2" placeholder="Digicode, étage..."></textarea>
-      </label>
-      <button id="send-btn" disabled>Envoyer la commande</button>
-    </section>
-  </main>
+  <!-- Filtres -->
+  <section class="filters">
+    <button class="chip" id="chipCategory">
+      <span id="labelCategory">Toutes les catégories</span><span class="chev">▾</span>
+    </button>
+    <button class="chip" id="chipFarm">
+      <span id="labelFarm">Toutes les farms</span><span class="chev">▾</span>
+    </button>
+  </section>
 
-  <script src="app.js"></script>
+  <!-- Grille produits -->
+  <main class="grid" id="grid" aria-live="polite"></main>
+
+  <!-- Bouton panier / checkout -->
+  <button id="checkoutBtn" class="fab" disabled>Envoyer la commande — 0,00€</button>
+
+  <!-- Bottom nav (facultatif) -->
+  <nav class="tabbar">
+    <a class="tab active" href="#"><span class="ico">🏠</span><span>Menu</span></a>
+    <a class="tab" href="#infos"><span class="ico">ℹ️</span><span>Infos</span></a>
+    <a class="tab" href="#canal"><span class="ico">📣</span><span>Canal</span></a>
+    <a class="tab" href="#contact"><span class="ico">✉️</span><span>Contact</span></a>
+  </nav>
+
+  <!-- Lightbox galerie -->
+  <div id="lightbox" class="lightbox" aria-hidden="true">
+    <button class="lb-close" id="lbClose" aria-label="Fermer">✕</button>
+    <button class="lb-prev" id="lbPrev" aria-label="Précédent">‹</button>
+    <button class="lb-next" id="lbNext" aria-label="Suivant">›</button>
+    <div class="lb-stage" id="lbStage"></div>
+    <div class="lb-ind" id="lbInd"></div>
+  </div>
+
+  <!-- Sheet checkout -->
+  <div id="sheet" class="sheet" aria-hidden="true">
+    <div class="sheet-card">
+      <header class="sheet-head">
+        <h3>Finaliser la commande</h3>
+        <button id="sheetClose" class="x">✕</button>
+      </header>
+      <div class="sheet-body">
+        <label>Nom / Prénom
+          <input id="name" placeholder="Ton nom" autocomplete="name" />
+        </label>
+        <label>Téléphone
+          <input id="phone" placeholder="+33..." inputmode="tel" autocomplete="tel" />
+        </label>
+        <label>Adresse complète
+          <textarea id="address" rows="3" placeholder="N°, rue, code postal, ville"></textarea>
+        </label>
+        <label>Note (optionnel)
+          <textarea id="note" rows="2" placeholder="Digicode, étage..."></textarea>
+        </label>
+        <div id="sheetError" class="error" role="alert" aria-live="polite"></div>
+      </div>
+      <footer class="sheet-foot">
+        <div id="sheetTotal" class="sheet-total">Total : 0,00€</div>
+        <button id="sendOrder" class="btn-primary">Envoyer la commande</button>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>
