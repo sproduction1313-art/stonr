@@ -4,59 +4,84 @@
   <meta charset="UTF-8" />
   <title>Inscription Backoffice</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Widget Netlify Identity -->
   <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
   <style>
     :root { --accent:#00e676; --bg:#111; --fg:#fff; }
     *{ box-sizing:border-box }
     body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial }
     h1{ margin:0 0 6px }
-    p{ margin:0 0 10px; opacity:.85 }
+    p{ margin:0 0 10px; opacity:.85; text-align:center; max-width:520px }
     .bar{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center }
-    button,a.btn{
+    button{
       background:var(--accent); color:#000; border:0; padding:10px 14px; border-radius:10px;
-      font-weight:700; text-decoration:none; cursor:pointer
+      font-weight:700; cursor:pointer
     }
     .secondary{ background:#2a2d33; color:#fff }
-    .hint{ opacity:.75; font-size:13px; margin-top:6px; text-align:center }
+    .err{ color:#ff6b6b; font-weight:700 }
+    .hint{ opacity:.75; font-size:13px; text-align:center }
   </style>
 </head>
 <body>
-  <h1>Créer mon compte admin</h1>
-  <p>Inscris-toi pour accéder au backoffice.</p>
-
+  <h1>Accès Backoffice</h1>
+  <p id="status">Chargement de l’authentification…</p>
   <div class="bar">
     <button id="signupBtn">S’inscrire</button>
-    <button id="loginBtn" class="secondary">J’ai déjà un compte</button>
+    <button id="loginBtn" class="secondary">Se connecter</button>
   </div>
-
-  <div class="hint">Après l’inscription ou la connexion, tu seras redirigé vers le backoffice.</div>
+  <div class="hint">Après inscription/connexion, vous serez redirigé vers le backoffice.</div>
 
   <script>
-    // Force l’endpoint Identity correct (utile quand il n’est pas détecté automatiquement)
-    netlifyIdentity.init({
-      APIUrl: "https://lestandardiste.netlify.app/.netlify/identity"
-    });
+    const API_URL = "https://lestandardiste.netlify.app/.netlify/identity";
 
-    // Ouvrir la modale d'inscription
-    document.getElementById('signupBtn').onclick = () => {
-      netlifyIdentity.open('signup');
-    };
-    // Ouvrir la modale de connexion
-    document.getElementById('loginBtn').onclick = () => {
-      netlifyIdentity.open('login');
-    };
+    function show(msg, cls='') {
+      const s = document.getElementById('status');
+      s.textContent = msg;
+      s.className = cls;
+    }
 
-    // Redirections après signup / login
-    netlifyIdentity.on('signup', () => {
-      // l’utilisateur doit confirmer par email, puis login
-      // on l’emmène vers le backoffice; s’il n’est pas encore confirmé,
-      // il verra la modale de login à l’arrivée.
-      window.location.href = '/backoffice/cms.html';
-    });
-    netlifyIdentity.on('login', () => {
-      window.location.href = '/backoffice/cms.html';
-    });
+    if (!window.netlifyIdentity) {
+      show("Erreur : widget Netlify Identity non chargé.", "err");
+    } else {
+      // 1) Init avec l’endpoint correct
+      netlifyIdentity.init({ APIUrl: API_URL });
+
+      // 2) Si un token d’invitation est présent, lance le flow d’invite
+      const hash = window.location.hash || "";
+      const hasInvite = /invite_token=/.test(hash);
+
+      netlifyIdentity.on('init', (user) => {
+        if (user) {
+          // déjà connecté
+          window.location.href = "/backoffice/cms.html";
+          return;
+        }
+        show(hasInvite ? "Invitation détectée, ouverture de l’inscription…" : "Prêt.");
+        if (hasInvite) {
+          // Ouvre directement la modale d’inscription pour consommer le token
+          netlifyIdentity.open('signup');
+        }
+      });
+
+      // 3) Boutons manuels
+      document.getElementById('signupBtn').onclick = () => netlifyIdentity.open('signup');
+      document.getElementById('loginBtn').onclick  = () => netlifyIdentity.open('login');
+
+      // 4) Redirections après succès
+      netlifyIdentity.on('signup', () => {
+        // L’utilisateur doit parfois confirmer son email → puis login
+        show("Inscription réussie. Redirection…");
+        window.location.href = "/backoffice/cms.html";
+      });
+      netlifyIdentity.on('login', () => {
+        show("Connexion réussie. Redirection…");
+        window.location.href = "/backoffice/cms.html";
+      });
+
+      // 5) Gestion d’erreurs courantes (ex: email non confirmé)
+      netlifyIdentity.on('error', (e) => {
+        show("Erreur d’authentification : " + (e && e.message ? e.message : e), "err");
+      });
+    }
   </script>
 </body>
 </html>
