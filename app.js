@@ -4,8 +4,8 @@ const FAB = document.getElementById('checkoutBtn');
 // ⚙️ GitHub (produits .md)
 const GH_OWNER = 'sproduction1313-art';
 const GH_REPO  = 'stonr';
-const GH_PATH  = 'content/produits';
 const GH_BRANCH= 'main';
+const GH_PATH  = 'content/produits';
 
 // 🛒 Panier
 const CART = new Map(); // { title, price, qty }
