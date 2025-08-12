@@ -1,67 +1,387 @@
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script>
-  const listDiv = document.getElementById("list");
-  let total = 0;
-
-  function parseFrontmatter(md){
-    const m = /^---\s*([\s\S]*?)\s*---\s*/.exec(md);
-    const body = md.replace(/^---[\s\S]*?---\s*/, '');
-    const fm = {};
-    if(m){
-      m[1].split('\n').forEach(line=>{
-        if(!line.trim()) return;
-        const idx = line.indexOf(':');
-        if(idx<0) return;
-        const k = line.slice(0,idx).trim();
-        let v = line.slice(idx+1).trim();
-        if(v === 'true') v = true;
-        else if(v === 'false') v = false;
-        else if(!isNaN(v) && v !== '') v = Number(v);
-        fm[k]=v;
-      });
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <title>Backoffice — STONR</title>
+  <meta name="robots" content="noindex"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    :root{
+      --bg:#0b0d10; --panel:#12161b; --ink:#e9eef4; --muted:#ffffff1a; --stroke:#1f242b;
+      --accent:#00e676; --danger:#ff6b6b; --ink-dim:#9aa6b2;
     }
-    return { fm, body };
-  }
+    *{box-sizing:border-box}
+    html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    a{color:inherit}
+    .wrap{max-width:1200px;margin:0 auto;padding:18px}
+    header{
+      position:sticky;top:0;background:linear-gradient(180deg,var(--bg),rgba(11,13,16,.7));
+      backdrop-filter: blur(8px); z-index:50; border-bottom:1px solid var(--muted);
+    }
+    .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px}
+    .title{font-size:16px;font-weight:800;letter-spacing:.4px;margin:0}
+    .hint{color:var(--ink-dim);font-size:12px}
+    .pill{display:inline-flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--muted);padding:6px 10px;border-radius:999px}
+    .btn{background:var(--accent);color:#000;border:0;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer}
+    .btn.secondary{background:#232a31;color:#fff;border:1px solid var(--stroke)}
+    .btn.ghost{background:transparent;border:1px dashed var(--muted);color:var(--ink)}
+    .btn.danger{background:var(--danger);color:#fff}
+    .grid{display:grid;gap:14px}
+    .two{grid-template-columns:1fr 1fr}
+    .three{grid-template-columns:repeat(3,minmax(0,1fr))}
+    @media (max-width:980px){ .two{grid-template-columns:1fr} .three{grid-template-columns:repeat(2,1fr)} }
+    @media (max-width:640px){ .three{grid-template-columns:1fr} }
 
-  async function chargerMenu() {
-    try {
-      const res = await fetch('https://api.github.com/repos/sproduction1313-art/stonr/contents/content/produits');
-      const files = await res.json();
-      if(!Array.isArray(files)) throw new Error('Aucun produit');
+    .card{background:var(--panel);border:1px solid var(--muted);border-radius:16px;padding:16px}
+    .card h3{margin:0 0 12px 0;font-size:15px}
+    label{display:flex;flex-direction:column;gap:6px;font-size:13px}
+    input,textarea,select{
+      background:#0f1318;border:1px solid var(--stroke);color:var(--ink);
+      border-radius:12px;padding:11px 12px;font-size:14px;outline:none
+    }
+    input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px #00e67630}
+    textarea{resize:vertical}
+    .row{display:grid;gap:10px}
+    .row.two{grid-template-columns:1fr 1fr}
+    @media (max-width:820px){ .row.two{grid-template-columns:1fr} }
 
-      const items = [];
-      for (const f of files) {
+    .drop{border:2px dashed var(--stroke);border-radius:14px;padding:16px;text-align:center;cursor:pointer}
+    .drop.drag{border-color:var(--accent)}
+    .thumb{width:96px;height:54px;object-fit:cover;border-radius:8px;border:1px solid var(--stroke)}
+    .msg{font-size:13px;margin-top:8px}
+    .ok{color:#00e676}.warn{color:#f1c40f}.err{color:#ff6b6b}
+
+    /* LISTE PRODUITS */
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .search{display:flex;gap:8px;align-items:center}
+    .search input{min-width:220px}
+    .cards{display:grid;gap:12px;grid-template-columns:repeat(4,minmax(0,1fr))}
+    @media (max-width:1200px){ .cards{grid-template-columns:repeat(3,1fr)} }
+    @media (max-width:900px){ .cards{grid-template-columns:repeat(2,1fr)} }
+    @media (max-width:560px){ .cards{grid-template-columns:1fr} }
+    .item{
+      background:#0f1318;border:1px solid var(--stroke);border-radius:16px;overflow:hidden;display:flex;flex-direction:column
+    }
+    .cover{aspect-ratio:16/9;background:#0a0d11;display:flex;align-items:center;justify-content:center}
+    .cover img{width:100%;height:100%;object-fit:cover}
+    .meta{padding:12px;display:grid;gap:6px}
+    .meta h4{margin:0;font-size:15px}
+    .tags{display:flex;gap:6px;flex-wrap:wrap}
+    .tag{font-size:11px;color:#000;background:var(--accent);padding:3px 8px;border-radius:999px}
+    .row-btns{display:flex;gap:8px;margin-top:8px}
+  </style>
+</head>
+<body>
+  <!-- HEADER -->
+  <header>
+    <div class="bar">
+      <div>
+        <h1 class="title">STONR — Backoffice produits</h1>
+        <div class="hint">Optimisé pour mini‑app Telegram · images 16:9 · touch‑friendly</div>
+      </div>
+      <div class="pill">
+        <span id="cfgStatus" class="hint">Config locale: non chargée</span>
+        <button id="saveCfg" class="btn secondary">Sauver</button>
+        <button id="loadCfg" class="btn secondary">Recharger</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap grid">
+    <!-- CONFIG -->
+    <section class="card">
+      <h3>1) Configuration</h3>
+      <div class="row two">
+        <label>GitHub Owner<input id="gh_owner" placeholder="sproduction1313-art"></label>
+        <label>GitHub Repo<input id="gh_repo" placeholder="stonr"></label>
+      </div>
+      <div class="row two">
+        <label>Branche<input id="gh_branch" placeholder="main" value="main"></label>
+        <label>Dossier produits<input id="gh_folder" placeholder="content/produits" value="content/produits"></label>
+      </div>
+      <div class="row two">
+        <label>GitHub Token (scope: repo)<input id="gh_token" type="password" placeholder="ghp_..."></label>
+        <label>Cloudinary — cloud_name<input id="cld_name" placeholder="das0b7bac"></label>
+      </div>
+      <div class="row two">
+        <label>Cloudinary — upload_preset<input id="cld_preset" placeholder="upload4real"></label>
+        <div style="display:flex;align-items:end;gap:10px">
+          <button class="btn" id="loadBtn">📥 Charger produits</button>
+          <span id="cfgMsg" class="msg"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- FORM PRODUIT -->
+    <section class="card">
+      <h3>2) Produit</h3>
+      <div class="row two">
+        <label>Titre<input id="p_title" placeholder="Ex: Brownie Hash"></label>
+        <label>Prix (€)<input id="p_price" type="number" min="0" step="0.01" placeholder="7.50"></label>
+      </div>
+      <div class="row two">
+        <label>Badge<input id="p_badge" placeholder="Nouveau / Best / Promo"></label>
+        <label>Ordre (tri ascendant)<input id="p_order" type="number" min="0" step="1" value="0"></label>
+      </div>
+      <label>Description<textarea id="p_desc" rows="3" placeholder="Courte description…"></textarea></label>
+
+      <div class="row two">
+        <div>
+          <label>Image (URL)
+            <input id="p_image" placeholder="https://.../image.jpg">
+          </label>
+          <div id="dropZone" class="drop">Glisse ici ou clique pour choisir une image (Cloudinary)</div>
+          <input id="p_image_file" type="file" accept="image/*" style="display:none">
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <img id="preview" class="thumb" style="display:none">
+            <span class="hint">Format conseillé: 16:9, < 1.5 Mo</span>
+          </div>
+        </div>
+        <div>
+          <label>Vidéo (URL .mp4 — optionnel)
+            <input id="p_video" placeholder="https://.../video.mp4">
+          </label>
+          <label>Publié ?
+            <select id="p_published">
+              <option value="true">Oui</option>
+              <option value="false">Non</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn" id="addLocal">➕ Ajouter / Mettre à jour (local)</button>
+        <button class="btn" id="commit">✅ Enregistrer sur GitHub</button>
+        <button class="btn secondary" id="clearForm">Vider</button>
+        <span id="prodMsg" class="msg"></span>
+      </div>
+    </section>
+
+    <!-- LISTE + OUTILS -->
+    <section class="card">
+      <div class="toolbar">
+        <div class="search">
+          <input id="q" placeholder="Rechercher un produit…">
+          <select id="filterPub">
+            <option value="all">Tous</option>
+            <option value="pub">Publiés</option>
+            <option value="hide">Masqués</option>
+          </select>
+          <select id="sortBy">
+            <option value="order">Tri: Ordre</option>
+            <option value="title">Tri: Titre</option>
+            <option value="price">Tri: Prix</option>
+          </select>
+        </div>
+        <button class="btn ghost" id="newBtn">+ Nouveau</button>
+      </div>
+      <div id="list" class="cards"></div>
+    </section>
+  </div>
+
+  <script>
+    // ===== Helpers =====
+    const $=id=>document.getElementById(id);
+    const CFGKEY='stonr_cfg_v2';
+    const slugify=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'').slice(0,60)||('p-'+Date.now());
+    const FRONT=p=>`---\n`+
+      `title: ${p.title||''}\nprice: ${Number(p.price)||0}\n`+
+      `description: ${p.description?String(p.description).replace(/\n/g,' '):''}\n`+
+      `image: ${p.image||''}\nvideo: ${p.video||''}\n`+
+      `badge: ${p.badge||''}\norder: ${Number(p.order)||0}\n`+
+      `published: ${p.published!==false}\n---\n`;
+
+    let PRODUCTS=[]; // {slug, sha?, data:{}}
+    let pendingDeletes=new Set();
+
+    function msg(el, t, cls='msg'){ el.className='msg '+cls; el.textContent=t; }
+    function readCfg(){
+      return {
+        owner:$('gh_owner').value.trim(),
+        repo:$('gh_repo').value.trim(),
+        branch:$('gh_branch').value.trim()||'main',
+        folder:$('gh_folder').value.trim()||'content/produits',
+        token:$('gh_token').value.trim(),
+        cld:{name:$('cld_name').value.trim(), preset:$('cld_preset').value.trim()}
+      };
+    }
+    function saveCfg(){ const c=readCfg(); localStorage.setItem(CFGKEY,JSON.stringify(c)); $('cfgStatus').textContent='Config locale: sauvegardée'; msg($('cfgMsg'),'✔️ Config enregistrée','ok'); return c; }
+    function loadCfg(){
+      const raw=localStorage.getItem(CFGKEY);
+      if(!raw){ $('cfgStatus').textContent='Config locale: absente'; return; }
+      const c=JSON.parse(raw);
+      $('gh_owner').value=c.owner||''; $('gh_repo').value=c.repo||''; $('gh_branch').value=c.branch||'main';
+      $('gh_folder').value=c.folder||'content/produits'; $('gh_token').value=c.token||'';
+      $('cld_name').value=c.cld?.name||''; $('cld_preset').value=c.cld?.preset||'';
+      $('cfgStatus').textContent='Config locale: chargée';
+    }
+    $('saveCfg').onclick=saveCfg; $('loadCfg').onclick=loadCfg;
+
+    // ===== Cloudinary upload =====
+    (function bindDrop(){
+      const dz=$('dropZone'), file=$('p_image_file');
+      const on=(e)=>{e.preventDefault();dz.classList.add('drag');};
+      const off=(e)=>{e.preventDefault();dz.classList.remove('drag');};
+      dz.addEventListener('click',()=>file.click());
+      ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,on));
+      ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,off));
+      dz.addEventListener('drop',e=>{const f=e.dataTransfer.files?.[0]; if(f) uploadImage(f);});
+      file.addEventListener('change',e=>{const f=e.target.files?.[0]; if(f) uploadImage(f);});
+    })();
+    async function uploadImage(f){
+      const c=saveCfg(); if(!c.cld.name||!c.cld.preset) return msg($('prodMsg'),'Cloudinary non configuré','err');
+      const form=new FormData(); form.append('file',f); form.append('upload_preset',c.cld.preset);
+      try{
+        const r=await fetch(`https://api.cloudinary.com/v1_1/${c.cld.name}/image/upload`,{method:'POST',body:form});
+        const d=await r.json(); if(!d.secure_url) throw new Error('upload');
+        $('p_image').value=d.secure_url; $('preview').src=d.secure_url; $('preview').style.display='block';
+        msg($('prodMsg'),'Image uploadée ✔️','ok');
+      }catch(e){ msg($('prodMsg'),'Échec upload image','err'); }
+    }
+
+    // ===== GitHub API =====
+    const ghHeaders=t=>({'Accept':'application/vnd.github+json','Authorization':'Bearer '+t});
+    async function fetchFolder(){
+      const c=saveCfg(); if(!c.owner||!c.repo||!c.folder||!c.token) return msg($('cfgMsg'),'Config GitHub incomplète','err');
+      const url=`https://api.github.com/repos/${c.owner}/${c.repo}/contents/${encodeURIComponent(c.folder)}?ref=${encodeURIComponent(c.branch)}`;
+      const res=await fetch(url,{headers:ghHeaders(c.token)});
+      if(res.status===404){ PRODUCTS=[]; render(); return msg($('cfgMsg'),'Dossier vide (créé au 1er enregistrement)','warn'); }
+      if(!res.ok){ return msg($('cfgMsg'),`Erreur GitHub ${res.status}: ${await res.text()}`,'err'); }
+      const arr=await res.json(); PRODUCTS=[];
+      for(const f of arr){
         if(!/\.md$/i.test(f.name)) continue;
-        const txt = await (await fetch(f.download_url)).text();
-        const { fm } = parseFrontmatter(txt);
-        if (fm.published === false) continue;
-        items.push(fm);
+        const txt=await (await fetch(f.download_url)).text();
+        const fm=parseFront(txt);
+        PRODUCTS.push({slug:f.name.replace(/\.md$/,''), sha:f.sha, data:fm});
       }
-
-      // tri par "order" puis titre
-      items.sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title||'').localeCompare(String(b.title||'')));
-
-      listDiv.innerHTML = '';
-      for (const p of items) {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          ${p.image ? `<img src="${p.image}" alt="${p.title||''}" />` : ''}
-          <h3>${p.title||'Sans titre'} ${p.badge?`<small>— ${p.badge}</small>`:''}</h3>
-          ${p.description ? `<p>${p.description}</p>` : ''}
-          ${p.video ? `<video controls style="width:100%;border-radius:10px;margin-top:8px"><source src="${p.video}" type="video/mp4"></video>` : ''}
-          <p class="prix">${p.price ? Number(p.price).toFixed(2)+'€' : ''}</p>
-          <button class="ajout-panier">Ajouter</button>
-        `;
-        card.querySelector('.ajout-panier').addEventListener('click', ()=>{
-          if (p.price){ total += Number(p.price); document.getElementById('total').textContent = "Total: " + total.toFixed(2) + "€"; }
-        });
-        listDiv.appendChild(card);
-      }
-    } catch (e) {
-      console.error(e);
-      listDiv.innerHTML = "<p>Impossible de charger le menu.</p>";
+      msg($('cfgMsg'),`Chargé ${PRODUCTS.length} produit(s)`,'ok'); render();
     }
-  }
-  chargerMenu();
-</script>
+    function parseFront(md){
+      const m=/^---\s*([\s\S]*?)\s*---/m.exec(md)||[]; const block=m[1]||''; const fm={};
+      block.split('\n').forEach(l=>{if(!l.trim())return;const i=l.indexOf(':');if(i<0)return;const k=l.slice(0,i).trim();let v=l.slice(i+1).trim();if(v==='true')v=true;else if(v==='false')v=false;else if(!isNaN(v)&&v!=='')v=Number(v);fm[k]=v;});
+      return fm;
+    }
+    async function putFile(path, content, sha){
+      const c=readCfg(); const url=`https://api.github.com/repos/${c.owner}/${c.repo}/contents/${encodeURIComponent(path)}`;
+      const b64=btoa(unescape(encodeURIComponent(content)));
+      const payload={message:`Update ${path} via backoffice`, content:b64, branch:c.branch}; if(sha) payload.sha=sha;
+      const r=await fetch(url,{method:'PUT',headers:{...ghHeaders(c.token),'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok) throw new Error(await r.text()); return r.json();
+    }
+    async function delFile(path, sha){
+      const c=readCfg(); const url=`https://api.github.com/repos/${c.owner}/${c.repo}/contents/${encodeURIComponent(path)}`;
+      const payload={message:`Delete ${path} via backoffice`, sha, branch:c.branch};
+      const r=await fetch(url,{method:'DELETE',headers:{...ghHeaders(c.token),'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok) throw new Error(await r.text()); return r.json();
+    }
+
+    // ===== UI =====
+    function render(){
+      const q=$('q').value.toLowerCase().trim();
+      const pub=$('filterPub').value;
+      const sort=$('sortBy').value;
+
+      let arr=[...PRODUCTS];
+      if(q) arr=arr.filter(x=>String(x.data.title||'').toLowerCase().includes(q));
+      if(pub==='pub') arr=arr.filter(x=>x.data.published!==false);
+      if(pub==='hide') arr=arr.filter(x=>x.data.published===false);
+
+      arr.sort((a,b)=>{
+        if(sort==='title') return String(a.data.title||'').localeCompare(String(b.data.title||''));
+        if(sort==='price') return (Number(a.data.price)||0)-(Number(b.data.price)||0);
+        return (a.data.order||0)-(b.data.order||0);
+      });
+
+      const box=$('list'); box.innerHTML='';
+      arr.forEach(it=>{
+        const el=document.createElement('div'); el.className='item';
+        el.innerHTML=`
+          <div class="cover">${it.data.image?`<img src="${it.data.image}" alt="">`:`<span class="hint">pas d'image</span>`}</div>
+          <div class="meta">
+            <h4>${it.data.title||'-'}</h4>
+            <div class="tags">
+              ${it.data.badge?`<span class="tag">${it.data.badge}</span>`:''}
+              <span class="tag" style="background:#232a31;color:#fff">${(Number(it.data.price)||0).toFixed(2)}€</span>
+              <span class="tag" style="background:${it.data.published!==false?'#00e676':'#888'};color:#000">${it.data.published!==false?'Publié':'Masqué'}</span>
+            </div>
+            <div class="row-btns">
+              <button class="btn secondary" data-edit="${it.slug}">Éditer</button>
+              <button class="btn danger" data-del="${it.slug}">Suppr.</button>
+            </div>
+          </div>`;
+        box.appendChild(el);
+      });
+
+      box.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>loadToForm(b.dataset.edit));
+      box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>markDelete(b.dataset.del));
+    }
+
+    function loadToForm(slug){
+      const it=PRODUCTS.find(x=>x.slug===slug); if(!it) return;
+      $('p_title').value=it.data.title||''; $('p_price').value=it.data.price||0;
+      $('p_badge').value=it.data.badge||''; $('p_order').value=it.data.order||0;
+      $('p_desc').value=it.data.description||''; $('p_image').value=it.data.image||'';
+      $('p_video').value=it.data.video||''; $('p_published').value=String(it.data.published!==false);
+      if(it.data.image){ $('preview').src=it.data.image; $('preview').style.display='block'; }
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+    function markDelete(slug){
+      if(!confirm(`Supprimer ${slug}.md ?`)) return;
+      pendingDeletes.add(slug); msg($('prodMsg'),`Suppression programmée: ${slug}.md`,'warn');
+    }
+
+    $('addLocal').onclick=()=>{
+      const p={
+        title:$('p_title').value.trim(),
+        price:Number($('p_price').value||0),
+        badge:$('p_badge').value.trim(),
+        order:Number($('p_order').value||0),
+        description:$('p_desc').value.trim(),
+        image:$('p_image').value.trim(),
+        video:$('p_video').value.trim(),
+        published:$('p_published').value==='true'
+      };
+      if(!p.title) return msg($('prodMsg'),'Titre requis','err');
+      const slug=slugify(p.title);
+      const i=PRODUCTS.findIndex(x=>x.slug===slug);
+      if(i>=0) PRODUCTS[i]={...PRODUCTS[i], data:p}; else PRODUCTS.push({slug, data:p});
+      msg($('prodMsg'),'Ajout/modif local OK → “Enregistrer sur GitHub”','ok'); render();
+    };
+    $('clearForm').onclick=()=>{['p_title','p_price','p_badge','p_order','p_desc','p_image','p_video'].forEach(id=>$(id).value='');$('p_published').value='true';$('preview').style.display='none';};
+
+    $('commit').onclick=async ()=>{
+      try{
+        const c=saveCfg(); if(!c.token) return msg($('prodMsg'),'Token GitHub requis','err');
+        for(const slug of pendingDeletes){
+          const it=PRODUCTS.find(x=>x.slug===slug);
+          if(it?.sha) await delFile(`${c.folder}/${slug}.md`, it.sha);
+          PRODUCTS=PRODUCTS.filter(x=>x.slug!==slug);
+        }
+        pendingDeletes.clear();
+        for(const it of PRODUCTS){
+          const body=FRONT(it.data);
+          const path=`${c.folder}/${it.slug}.md`;
+          const resp=await putFile(path, body, it.sha);
+          it.sha=resp.content?.sha||it.sha;
+        }
+        msg($('prodMsg'),'✅ Commit GitHub OK. Rafraîchis la mini‑app.','ok');
+      }catch(e){ console.error(e); msg($('prodMsg'),'Erreur commit: '+e.message,'err'); }
+    };
+
+    // Filtres/tri
+    $('q').oninput=render; $('filterPub').onchange=render; $('sortBy').onchange=render;
+    $('newBtn').onclick=()=>{ $('clearForm').click(); $('p_title').focus(); };
+
+    // Boot
+    window.addEventListener('DOMContentLoaded', ()=>{
+      $('gh_owner').value='sproduction1313-art';
+      $('gh_repo').value='stonr';
+      $('gh_branch').value='main';
+      $('gh_folder').value='content/produits';
+      loadCfg();
+    });
+    $('loadBtn').onclick=fetchFolder;
+  </script>
+</body>
+</html>
