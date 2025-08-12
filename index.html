@@ -44,6 +44,60 @@
     <div id="total" class="total">Total: 0€</div>
   </footer>
 
-  <script type="module" src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    const listDiv = document.getElementById("list");
+    let total = 0;
+
+    async function chargerMenu() {
+      try {
+        const response = await fetch('https://api.github.com/repos/sproduction1313-art/stonr/contents/content/produits');
+        const produits = await response.json();
+
+        for (const fichier of produits) {
+          const res = await fetch(fichier.download_url);
+          const contenu = await res.text();
+
+          // Récupérer les métadonnées
+          const meta = /---([\s\S]*?)---/.exec(contenu);
+          let infos = {};
+          if (meta) {
+            meta[1].split('\n').forEach(ligne => {
+              const [cle, ...val] = ligne.split(':');
+              infos[cle.trim()] = val.join(':').trim();
+            });
+          }
+
+          if (infos.published === "false") continue;
+
+          // Affichage produit
+          const produitHTML = document.createElement("div");
+          produitHTML.className = "card";
+          produitHTML.innerHTML = `
+            ${infos.image ? `<img src="${infos.image}" alt="${infos.title}" />` : ""}
+            <h3>${infos.title || 'Sans titre'}</h3>
+            <p>${infos.description || ''}</p>
+            <p class="prix">${infos.price ? infos.price + '€' : ''}</p>
+            <button class="ajout-panier">Ajouter</button>
+          `;
+
+          // Gestion ajout panier
+          produitHTML.querySelector(".ajout-panier").addEventListener("click", () => {
+            if (infos.price) {
+              total += parseFloat(infos.price);
+              document.getElementById("total").textContent = "Total: " + total.toFixed(2) + "€";
+            }
+          });
+
+          listDiv.appendChild(produitHTML);
+        }
+      } catch (err) {
+        console.error("Erreur chargement menu :", err);
+        listDiv.innerHTML = "<p>Impossible de charger le menu.</p>";
+      }
+    }
+
+    chargerMenu();
+  </script>
 </body>
 </html>
