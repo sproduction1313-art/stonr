@@ -1,23 +1,67 @@
-<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8"/>
-    <meta name="robots" content="noindex"/>
-    <meta name="viewport" content="width=device-width,initial-scale=1"/>
-    <title>Backoffice</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+  const listDiv = document.getElementById("list");
+  let total = 0;
 
-    <!-- Decap CMS -->
-    <script src="https://unpkg.com/decap-cms@^3.0.0/dist/decap-cms.js"></script>
-    <!-- Netlify Identity -->
-    <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
-  </head>
-  <body>
-    <script>
-      if (window.netlifyIdentity) {
-        window.netlifyIdentity.on('init', (user) => {
-          if (!user) window.netlifyIdentity.open();
-        });
+  function parseFrontmatter(md){
+    const m = /^---\s*([\s\S]*?)\s*---\s*/.exec(md);
+    const body = md.replace(/^---[\s\S]*?---\s*/, '');
+    const fm = {};
+    if(m){
+      m[1].split('\n').forEach(line=>{
+        if(!line.trim()) return;
+        const idx = line.indexOf(':');
+        if(idx<0) return;
+        const k = line.slice(0,idx).trim();
+        let v = line.slice(idx+1).trim();
+        if(v === 'true') v = true;
+        else if(v === 'false') v = false;
+        else if(!isNaN(v) && v !== '') v = Number(v);
+        fm[k]=v;
+      });
+    }
+    return { fm, body };
+  }
+
+  async function chargerMenu() {
+    try {
+      const res = await fetch('https://api.github.com/repos/sproduction1313-art/stonr/contents/content/produits');
+      const files = await res.json();
+      if(!Array.isArray(files)) throw new Error('Aucun produit');
+
+      const items = [];
+      for (const f of files) {
+        if(!/\.md$/i.test(f.name)) continue;
+        const txt = await (await fetch(f.download_url)).text();
+        const { fm } = parseFrontmatter(txt);
+        if (fm.published === false) continue;
+        items.push(fm);
       }
-    </script>
-  </body>
-</html>
+
+      // tri par "order" puis titre
+      items.sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title||'').localeCompare(String(b.title||'')));
+
+      listDiv.innerHTML = '';
+      for (const p of items) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          ${p.image ? `<img src="${p.image}" alt="${p.title||''}" />` : ''}
+          <h3>${p.title||'Sans titre'} ${p.badge?`<small>— ${p.badge}</small>`:''}</h3>
+          ${p.description ? `<p>${p.description}</p>` : ''}
+          ${p.video ? `<video controls style="width:100%;border-radius:10px;margin-top:8px"><source src="${p.video}" type="video/mp4"></video>` : ''}
+          <p class="prix">${p.price ? Number(p.price).toFixed(2)+'€' : ''}</p>
+          <button class="ajout-panier">Ajouter</button>
+        `;
+        card.querySelector('.ajout-panier').addEventListener('click', ()=>{
+          if (p.price){ total += Number(p.price); document.getElementById('total').textContent = "Total: " + total.toFixed(2) + "€"; }
+        });
+        listDiv.appendChild(card);
+      }
+    } catch (e) {
+      console.error(e);
+      listDiv.innerHTML = "<p>Impossible de charger le menu.</p>";
+    }
+  }
+  chargerMenu();
+</script>
