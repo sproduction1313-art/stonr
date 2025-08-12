@@ -7,6 +7,9 @@ on:
       - '.github/workflows/auto-products.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,31 +20,40 @@ jobs:
           fetch-depth: 0
 
       - name: Generate products.json
+        env:
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
         run: |
-          set -e
-          # Dossier des produits
-          DIR="content/produits"
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
 
-          # Crée un tableau JSON avec toutes les URLs RAW des .md
-          echo '[' > products.json
-          first=1
-          for f in $(git ls-files "${DIR}/*.md"); do
-            # skip si aucun fichier
-            [ -e "$f" ] || continue
-            url="https://raw.githubusercontent.com/${{ github.repository }}/main/$f"
-            if [ $first -eq 0 ]; then echo ',' >> products.json; fi
-            printf '  "%s"' "$url" >> products.json
-            first=0
-          done
-          echo '' >> products.json
-          echo ']' >> products.json
+          const ROOT = process.cwd();
+          const DIR = path.join(ROOT, 'content/produits');
 
-          echo "=== products.json ==="
-          cat products.json
+          function walk(dir, out=[]) {
+            if (!fs.existsSync(dir)) return out;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const p = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(p, out);
+              else if (entry.isFile() && p.toLowerCase().endsWith('.md')) {
+                out.push(p.replace(ROOT + path.sep, '').replace(/\\/g,'/'));
+              }
+            }
+            return out;
+          }
+
+          const files = walk(DIR);
+          const repo = process.env.REPO;              // ex: sproduction1313-art/stonr
+          const branch = process.env.BRANCH || 'main';
+          const urls = files.map(f => `https://raw.githubusercontent.com/${repo}/${branch}/${f}`);
+
+          fs.writeFileSync('products.json', JSON.stringify(urls, null, 2));
+          console.log('Generated products.json with', urls.length, 'items');
+          NODE
 
       - name: Commit & push if changed
         run: |
-          set -e
           if git diff --quiet -- products.json; then
             echo "No changes in products.json"
             exit 0
