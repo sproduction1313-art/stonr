@@ -238,4 +238,73 @@ function fallbackOpenBot(payload){
 }
 
 // start
-loadProducts();
+async function loadProducts(){
+  const listURL = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(GH_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}&t=${Date.now()}`;
+  console.log('[MENU] fetch list:', listURL);
+
+  let res = await fetch(listURL, { headers: { 'Cache-Control': 'no-cache' } });
+  if (!res.ok) {
+    console.error('[MENU] list error', res.status, await res.text());
+    document.getElementById('grid').innerHTML = '<p>Impossible de charger le menu.</p>';
+    return;
+  }
+  const files = await res.json();
+  if (!Array.isArray(files) || files.length === 0) {
+    console.warn('[MENU] aucun fichier dans content/produits');
+    document.getElementById('grid').innerHTML = '<p>Aucun produit publié.</p>';
+    return;
+  }
+
+  const items = [];
+  for (const f of files) {
+    if (!/\.md$/i.test(f.name)) continue;
+    const rawUrl = f.download_url + `?t=${Date.now()}`; // anti-cache
+    const md = await (await fetch(rawUrl, { headers: { 'Cache-Control': 'no-cache' } })).text();
+
+    // parse frontmatter ultra simple
+    const m = /^---\s*([\s\S]*?)\s*---/m.exec(md);
+    const fm = {};
+    if (m) {
+      m[1].split('\n').forEach(line=>{
+        const L=line.trim(); if(!L) return;
+        const i=L.indexOf(':'); if(i<0) return;
+        const k=L.slice(0,i).trim(); let v=L.slice(i+1).trim();
+        if (v==='true') v = true;
+        else if (v==='false') v = false;
+        else if (!isNaN(v) && v!=='') v = Number(v);
+        fm[k]=v;
+      });
+    }
+
+    // ne masque que si published === false
+    if (fm.published === false) continue;
+
+    const images = [];
+    const videos = [];
+    if (fm.image)  images.push(String(fm.image));
+    if (fm.images) String(fm.images).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>images.push(u));
+    if (fm.video)  videos.push(String(fm.video));
+    if (fm.videos) String(fm.videos).split(',').map(s=>s.trim()).filter(Boolean).forEach(u=>videos.push(u));
+
+    const media = [
+      ...images.map(src=>({type:'image', src})),
+      ...videos.map(src=>({type:'video', src}))
+    ];
+
+    items.push({
+      title: fm.title || f.name.replace(/\.md$/,''),
+      price: (typeof fm.price==='number') ? fm.price : Number(fm.price||0),
+      badge: fm.badge || '',
+      category: fm.category || '',
+      farm: fm.farm || '',
+      order: typeof fm.order==='number' ? fm.order : Number(fm.order||0),
+      media
+    });
+  }
+
+  // tri et rendu
+  items.sort((a,b)=> (a.order||0)-(b.order||0) || String(a.title).localeCompare(b.title));
+  console.log('[MENU] produits chargés:', items.map(i=>i.title));
+  render(items);
+}
+
