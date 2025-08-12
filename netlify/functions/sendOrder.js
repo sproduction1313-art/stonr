@@ -1,44 +1,17 @@
 // netlify/functions/sendOrder.js
-// Node 18+ sur Netlify : fetch est dispo nativement
-
 exports.handler = async (event) => {
   try {
-    if (event.httpMethod !== "POST") {
-      return { statusCode: 405, body: "Method Not Allowed" };
-    }
+    if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
 
-    // ⚠️ Utilise d'abord les variables d'env si présentes (meilleure sécurité),
-    // sinon fallback sur tes valeurs pour que ça marche "juste en copiant-collant".
     const BOT_TOKEN =
       process.env.TELEGRAM_BOT_TOKEN ||
-      "8498494937:AAGJx8ZbG4F6UvlIGckObcgjz1j3XbLFNH4";
+      "8498494937:AAGJx8ZbG4F6UvlIGckObcgjz1j3XbLFNH4"; // TODO: passe en variable d'env plus tard
+    const ADMIN_CHAT_ID =
+      process.env.TELEGRAM_CHAT_ID || "542839510"; // @S_Ottoo (admin)
 
-    const DEFAULT_CHAT_ID =
-      process.env.TELEGRAM_CHAT_ID || "542839510"; // @S_Ottoo
+    const { payload = {}, chatId: customerId = "" } = JSON.parse(event.body || "{}");
 
-    if (!BOT_TOKEN) {
-      return { statusCode: 500, body: "Missing TELEGRAM_BOT_TOKEN" };
-    }
-
-    const body = JSON.parse(event.body || "{}");
-    const payload = body.payload || {};
-
-    // chat_id prioritaire = fourni par le front (si la mini‑app est ouverte dans Telegram)
-    const chatId =
-      body.chatId ||
-      body.userId ||
-      (payload.customer && payload.customer.chatId) ||
-      DEFAULT_CHAT_ID;
-
-    if (!chatId) {
-      return {
-        statusCode: 400,
-        body:
-          "chat_id manquant. Ouvre la mini‑app depuis Telegram ou configure TELEGRAM_CHAT_ID.",
-      };
-    }
-
-    // Construire le message
+    // Construire message admin
     const L = [];
     L.push("📦 *Nouvelle commande*");
     L.push("");
@@ -49,32 +22,47 @@ exports.handler = async (event) => {
     L.push("");
     L.push("*Produits:*");
     (payload.items || []).forEach((it) => {
-      const p = Number(it.price || 0);
-      L.push(`• ${it.title} ×${it.qty} — ${p.toFixed(2)}€`);
+      L.push(`• ${it.title} ×${it.qty} — ${Number(it.price||0).toFixed(2)}€`);
     });
     L.push("");
-    L.push(`💰 *Total*: ${Number(payload.total || 0).toFixed(2)}€`);
+    L.push(`💰 *Total*: ${Number(payload.total||0).toFixed(2)}€`);
+    if (customerId) L.push(`\n🆔 Client: \`${customerId}\``);
+    const adminText = L.join("\n");
 
-    const text = L.join("\n");
+    // Inline keyboard pour actions admin
+    const inline_keyboard = [[
+      { text: "✅ Accepter", callback_data: `ok:${customerId||'-'}` },
+      { text: "❌ Refuser",  callback_data: `no:${customerId||'-'}` },
+      { text: "✍️ Message",  callback_data: `msg:${customerId||'-'}` }
+    ]];
 
-    // Envoi Telegram
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-    const resp = await fetch(url, {
+    // Envoi au canal admin
+    const sendToAdmin = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type":"application/json" },
       body: JSON.stringify({
-        chat_id: chatId,
-        text,
+        chat_id: ADMIN_CHAT_ID,
+        text: adminText,
         parse_mode: "Markdown",
-      }),
+        reply_markup: { inline_keyboard }
+      })
     });
-    const data = await resp.json();
+    const adminRes = await sendToAdmin.json();
+    if (!sendToAdmin.ok || !adminRes.ok) {
+      return { statusCode: 502, body: `Telegram(admin) error: ${sendToAdmin.status} ${JSON.stringify(adminRes)}` };
+    }
 
-    if (!resp.ok || !data.ok) {
-      return {
-        statusCode: 502,
-        body: `Telegram error: ${resp.status} ${JSON.stringify(data)}`,
-      };
+    // Accusé de réception côté client (si mini‑app et donc customerId connu)
+    if (customerId) {
+      const ack = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({
+          chat_id: customerId,
+          text: "🧾 Merci ! Ta commande a bien été envoyée. On te répond vite ici 👍",
+        })
+      });
+      await ack.json(); // ignore erreurs client
     }
 
     return { statusCode: 200, body: JSON.stringify({ ok: true }) };
