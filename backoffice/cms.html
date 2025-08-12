@@ -1,23 +1,12 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
   <meta charset="UTF-8">
   <title>Backoffice</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Netlify CMS -->
-  <script src="https://unpkg.com/netlify-cms@2.10.192/dist/netlify-cms.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/netlify-cms@2.10.192/dist/netlify-cms.css">
 </head>
 <body>
-  <script>
-    // Si la config ne charge pas → afficher un message
-    fetch('/backoffice/config.yml')
-      .then(r => {
-        if (!r.ok) throw new Error('Config.yml introuvable');
-        console.log('✅ Config.yml chargé');
-      })
-      .catch(err => {
-        document.body.innerHTML = '<h1>Erreur : config.yml introuvable</h1><p>' + err + '</p>';
-      });
-  </script>
+  <script src="https://unpkg.com/netlify-cms@2.10.192/dist/netlify-cms.js"></script>
 </body>
 </html>
