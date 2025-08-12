@@ -1,0 +1,19 @@
+[[headers]]
+  for = "/admin"
+  [headers.values]
+    Basic-Auth = "admin 1005"
+
+[[headers]]
+  for = "/admin/*"
+  [headers.values]
+    Basic-Auth = "admin 1005"
+
+[[headers]]
+  for = "/backoffice"
+  [headers.values]
+    Basic-Auth = "admin 1005"
+
+[[headers]]
+  for = "/backoffice/*"
+  [headers.values]
+    Basic-Auth = "admin 1005"
