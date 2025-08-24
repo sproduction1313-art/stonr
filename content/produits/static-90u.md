@@ -1,5 +1,5 @@
 ---
-title: Static 90u
+title: Filtré 90u
 price: 30
 image: /assets/uploads/img_1834.jpg
 order: 0
