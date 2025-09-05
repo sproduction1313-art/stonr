@@ -1,4 +1,3 @@
-// netlify/functions/sendOrder.js
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
@@ -6,8 +5,12 @@ exports.handler = async (event) => {
     const BOT_TOKEN =
       process.env.TELEGRAM_BOT_TOKEN ||
       "8498494937:AAGJx8ZbG4F6UvlIGckObcgjz1j3XbLFNH4"; // TODO: passe en variable d'env plus tard
-    const ADMIN_CHAT_ID =
-      process.env.TELEGRAM_CHAT_ID || "542839510"; // @S_Ottoo (admin)
+
+    // Liste des destinataires admin
+    const ADMIN_CHAT_IDS = [
+      "542839510",      // @S_Ottoo (admin)
+      "5960037916"      // Shark 🦈
+    ];
 
     const { payload = {}, chatId: customerId = "" } = JSON.parse(event.body || "{}");
 
@@ -36,20 +39,22 @@ exports.handler = async (event) => {
       { text: "✍️ Message",  callback_data: `msg:${customerId||'-'}` }
     ]];
 
-    // Envoi au canal admin
-    const sendToAdmin = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type":"application/json" },
-      body: JSON.stringify({
-        chat_id: ADMIN_CHAT_ID,
-        text: adminText,
-        parse_mode: "Markdown",
-        reply_markup: { inline_keyboard }
-      })
-    });
-    const adminRes = await sendToAdmin.json();
-    if (!sendToAdmin.ok || !adminRes.ok) {
-      return { statusCode: 502, body: `Telegram(admin) error: ${sendToAdmin.status} ${JSON.stringify(adminRes)}` };
+    // Envoi aux admins
+    for (const chatId of ADMIN_CHAT_IDS) {
+      const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: adminText,
+          parse_mode: "Markdown",
+          reply_markup: { inline_keyboard }
+        })
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        console.error(`Erreur Telegram pour ${chatId}:`, json);
+      }
     }
 
     // Accusé de réception côté client (si mini‑app et donc customerId connu)
