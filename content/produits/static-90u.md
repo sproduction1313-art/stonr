@@ -1,7 +1,7 @@
 ---
-title: Filtré 90u
+title: 30 De Frozen
 price: 30
-image: /assets/uploads/img_1834.jpg
+image: /assets/uploads/img_2188.jpg
 order: 0
 published: true
 ---
