@@ -1,5 +1,5 @@
 ---
-title: Détail Frozen
+title: Frozen 🧊🇲🇦
 price: 30
 image: /assets/uploads/img_2188.jpg
 order: 0
