@@ -1,8 +1,0 @@
----
-title: TropicalZ California Weed
-price: 30
-description: 2,5G
-image: /assets/uploads/img_2179.jpg
-order: 0
-published: true
----
